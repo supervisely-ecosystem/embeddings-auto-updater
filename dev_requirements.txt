@@ -1,0 +1,4 @@
+supervisely==6.73.376
+clip-client==0.8.3
+qdrant-client==1.12.1
+apscheduler==3.11.0

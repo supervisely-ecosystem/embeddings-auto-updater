@@ -1,0 +1,25 @@
+{
+	"type": "app",
+	"version": "2.0.0",
+	"name": "Embeddings Auto-Updater",
+	"modal_template": "src/modal.html",
+	"modal_template_state": {
+		"qdrantHost": "",
+		"casHost": ""
+	},
+	"description": "Microservice for auto-generating embeddings for project images and saving them to Qdrant.",
+	"categories": ["system"],
+	"icon": "",
+	"icon_cover": true,
+	"poster": "",
+	"headless": true,
+	"entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --log-level warning",
+	"port": 8000,
+	"docker_image": "supervisely/embeddings-generator:0.1.3rc7",
+	"context_menu": {
+		"target": ["files_file", "ecosystem"]
+	},
+	"restart_policy": "on_error",
+	"task_location": "application_sessions",
+	"only_for_instance_admins": true
+}

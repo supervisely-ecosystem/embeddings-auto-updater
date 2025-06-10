@@ -1,0 +1,49 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "UI App",
+			"type": "debugpy",
+			"request": "launch",
+			"module": "uvicorn",
+			"args": [
+				"src.main:app",
+				"--host",
+				"0.0.0.0",
+				"--port",
+				"8000",
+				"--ws",
+				"websockets",
+				"--reload"
+			],
+			"jinja": true,
+			"justMyCode": false,
+			"env": {
+				"PYTHONPATH": "${workspaceFolder}:${PYTHONPATH}",
+				"LOG_LEVEL": "DEBUG"
+			}
+		},
+		{
+			"name": "test App",
+			"type": "debugpy",
+			"request": "launch",
+			"module": "uvicorn",
+			"args": [
+				"test:app",
+				"--host",
+				"0.0.0.0",
+				"--port",
+				"8001",
+				"--ws",
+				"websockets",
+				"--reload"
+			],
+			"jinja": true,
+			"justMyCode": false,
+			"env": {
+				"PYTHONPATH": "${workspaceFolder}:${PYTHONPATH}",
+				"LOG_LEVEL": "DEBUG"
+			}
+		}
+	]
+}

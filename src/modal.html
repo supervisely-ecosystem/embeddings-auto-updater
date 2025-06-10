@@ -1,0 +1,46 @@
+<div v-if="context.slySelectedContext !== 'files_file'">
+	<div
+		class="fflex align-start"
+		style="flex-direction: column; margin: 0 0 20px 0"
+	>
+		<sly-field
+			title="Qdrant DB"
+			description="Enter host of the Qdrant database including port."
+		>
+		</sly-field>
+		<el-input
+			placeholder="E.g. https://192.168.1.1:443"
+			v-model="state.qdrantHost"
+		></el-input>
+	</div>
+	<div
+		class="fflex align-start"
+		style="flex-direction: column; margin: 0 0 20px 0"
+	>
+		<sly-field
+			title="CLIP Service"
+			description="Enter Task ID of the CLIP Service or its host including port."
+		>
+		</sly-field>
+		<el-input
+			placeholder="E.g. 1234 or https://192.168.1.1:51000"
+			v-model="state.casHost"
+		></el-input>
+	</div>
+	<div
+		class="fflex align-start"
+		style="flex-direction: column; margin: 0 0 20px 0"
+	>
+		<sly-field
+			title="Update Interval"
+			description="Enter the interval in minutes for updating embeddings for selected projects."
+		>
+		</sly-field>
+		<el-input-number
+			value="10"
+			:min="1"
+			:max="1440"
+			v-model="state.update_interval"
+		></el-input-number>
+	</div>
+</div>
