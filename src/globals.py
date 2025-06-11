@@ -22,6 +22,7 @@ qdrant_host = os.getenv("modal.state.qdrantHost") or os.getenv("QDRANT_HOST")
 cas_host = os.getenv("modal.state.casHost") or os.getenv("CAS_HOST")
 
 update_interval = int(os.getenv("modal.state.update_interval") or os.getenv("UPDATE_INTERVAL"))
+update_frame = int(os.getenv("modal.state.update_frame") or os.getenv("UPDATE_FRAME"))
 try:
     cas_host = int(cas_host)
     task_info = api.task.get_info_by_id(cas_host)
@@ -46,9 +47,11 @@ sly.logger.info("CAS host: %s", cas_host)
 # region constants
 IMAGE_SIZE_FOR_CAS = 224
 UPDATE_EMBEDDINGS_INTERVAL = update_interval  # minutes, default is 10
+CHECK_INPROGRESS_INTERVAL = 4  # hours, default is 4
 # endregion
 
 sly.logger.debug("Image size for CAS: %s", IMAGE_SIZE_FOR_CAS)
-sly.logger.debug("Update embeddings interval: %s", UPDATE_EMBEDDINGS_INTERVAL)
+sly.logger.debug("Update interval: %s", UPDATE_EMBEDDINGS_INTERVAL)
+sly.logger.debug("Update frame: %s", update_frame)
 
 background_tasks = {}

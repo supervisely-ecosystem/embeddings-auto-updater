@@ -43,4 +43,20 @@
 			v-model="state.update_interval"
 		></el-input-number>
 	</div>
+	<div
+		class="fflex align-start"
+		style="flex-direction: column; margin: 0 0 20px 0"
+	>
+		<sly-field
+			title="Completion Time Frame"
+			description="Time frame configuration that determines the interval duration for embedding calculations per project. If the calculation doesn't complete within this timeframe, it will attempt to recalculate the embeddings again."
+		>
+		</sly-field>
+		<el-input-number
+			value="24"
+			:min="1"
+			:max="168"
+			v-model="state.update_frame"
+		></el-input-number>
+	</div>
 </div>

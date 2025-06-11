@@ -1,6 +1,6 @@
 import asyncio
-import datetime
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from functools import partial, wraps
 from time import perf_counter
 from typing import Callable, Dict, List, Optional, Union
@@ -8,6 +8,7 @@ from typing import Callable, Dict, List, Optional, Union
 import supervisely as sly
 from supervisely._utils import batched, resize_image_url
 from supervisely.api.module_api import ApiField
+from supervisely.api.task_api import TaskApi
 
 
 class TupleFields:
@@ -116,6 +117,13 @@ class ResponseStatus:
     ERROR = "error"
     IN_PROGRESS = "in_progress"
     NOT_FOUND = "not_found"
+
+
+class CustomDataFields:
+    """Fields of the custom data."""
+
+    EMBEDDINGS_UPDATE_STARTED_AT = "embeddings_update_started_at"
+    EMBEDDINGS_UPDATE_TASK_ID = "embeddings_update_task_id"
 
 
 @dataclass
@@ -393,14 +401,12 @@ async def create_lite_image_infos(
     ]
 
 
-def parse_timestamp(
-    timestamp: str, timestamp_format: str = "%Y-%m-%dT%H:%M:%S.%fZ"
-) -> datetime.datetime:
+def parse_timestamp(timestamp: str, timestamp_format: str = "%Y-%m-%dT%H:%M:%S.%fZ") -> datetime:
     """
     Parse timestamp string to datetime object.
     Timestamp format: "2021-01-22T19:37:50.158Z".
     """
-    return datetime.datetime.strptime(timestamp, timestamp_format)
+    return datetime.strptime(timestamp, timestamp_format)
 
 
 async def send_request(
@@ -705,20 +711,23 @@ async def get_list_all_pages_async(
 async def get_all_projects(
     api: sly.Api,
     project_ids: Optional[List[int]] = None,
+    filters: Optional[List[Dict]] = None,
 ) -> List[sly.ProjectInfo]:
     """
     Get all projects from the Supervisely server that have a flag for automatic embeddings update.
 
     Fields that will be returned:
         - id
-        - name
+        - size
+        - workspace_id
+        - type
+        - created_at
         - updated_at
+        - name
+        - team_id
         - embeddings_enabled
         - embeddings_in_progress
         - embeddings_updated_at
-        - team_id
-        - workspace_id
-        - items_count
 
     """
     method = "projects.list.all"
@@ -739,6 +748,8 @@ async def get_all_projects(
             }
         ],
     }
+    if filters is not None:
+        data[ApiField.FILTER].extend(filters)
     tasks = []
     if project_ids is not None:
         for batch in batched(project_ids):
@@ -781,3 +792,67 @@ async def get_all_projects(
     for task in asyncio.as_completed(tasks):
         results.extend(await task)
     return results
+
+
+@to_thread
+@timeit
+def set_update_flag(api: sly.Api, project_id: int):
+    custom_data = api.project.get_custom_data(project_id)
+    custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] = datetime.now(
+        timezone.utc
+    ).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] = api.task_id
+    api.project.update_custom_data(project_id, custom_data, silent=True)
+
+
+@to_thread
+@timeit
+def get_update_flag(api: sly.Api, project_id: int) -> Optional[dict]:
+    custom_data = api.project.get_custom_data(project_id)
+    info = {
+        CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT: None,
+        CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID: None,
+    }
+    if CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT in custom_data:
+        info[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] = custom_data[
+            CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT
+        ]
+    if CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID in custom_data:
+        info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] = custom_data[
+            CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID
+        ]
+    return info
+
+
+to_thread
+
+
+@timeit
+def clear_update_flag(api: sly.Api, project_id: int):
+    custom_data = api.project.get_custom_data(project_id)
+    if CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT in custom_data:
+        del custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT]
+    if CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID in custom_data:
+        del custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID]
+    api.project.update_custom_data(project_id, custom_data, silent=True)
+
+
+@to_thread
+@timeit
+def is_task_running(api: sly.Api, task_id: int) -> Optional[bool]:
+    """Check if the task is currently running by its ID.
+
+    :param api: Instance of supervisely API.
+    :type api: sly.Api
+    :param task_id: ID of the task to check status.
+    :type task_id: int
+    :return: Dictionary with task status or None if task not found.
+    :rtype: Optional[Dict]
+    """
+
+    try:
+        status = api.task.is_running(task_id)
+    except Exception as e:
+        sly.logger.error("Error checking task status: %s", e, exc_info=True)
+        status = None
+    return status
