@@ -17,7 +17,7 @@
 	"port": 8000,
 	"docker_image": "supervisely/embeddings-generator:0.1.3rc7",
 	"context_menu": {
-		"target": ["files_file", "ecosystem"]
+		"target": ["ecosystem"]
 	},
 	"restart_policy": "on_error",
 	"task_location": "application_sessions",
