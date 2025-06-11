@@ -9,7 +9,7 @@
 	},
 	"description": "Microservice for auto-generating embeddings for project images and saving them to Qdrant.",
 	"categories": ["system"],
-	"icon": "https://github.com/user-attachments/assets/63d8b18e-ec28-4d97-a117-4bfb669a4cf3",
+	"icon": "https://github.com/supervisely-ecosystem/embeddings-auto-updater/releases/download/untagged-6c9acd0e230b18e1b86a/icon_2.png",
 	"icon_cover": true,
 	"poster": "",
 	"headless": true,
