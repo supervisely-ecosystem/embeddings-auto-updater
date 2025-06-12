@@ -150,12 +150,12 @@ async def update_embeddings(
         elif project_info.embeddings_updated_at is None:
             # do not need to check or create collection here, it will be created in process_images
             logger.info(
-                f"{msg_prefix} Embeddings are not updated yet, creating embeddings for all images."
+                f"{msg_prefix} Embeddings have not been created yet. Will be crated for all required images."
             )
-            images_to_create = await image_get_list_async(api, project_id)
+            images_to_create = await image_get_list_async(api, project_id, wo_embeddings=True)
             images_to_delete = []
         else:
-            logger.info(f"{msg_prefix} Checking for images that need to be updated.")
+            logger.info(f"{msg_prefix} Checking for images that need embeddings to be created.")
             images_to_create = await image_get_list_async(api, project_id, wo_embeddings=True)
             images_to_delete = await image_get_list_async(
                 api, project_id, deleted_after=project_info.embeddings_updated_at
@@ -248,7 +248,7 @@ async def auto_update_all_embeddings():
 
 
 @timeit
-async def check_in_progress_projects(api: sly.Api):
+async def check_in_progress_projects():
     """
     Check if there are any projects that are stuck in progress.
     """
@@ -267,7 +267,7 @@ async def check_in_progress_projects(api: sly.Api):
         clear_in_progress = False
         msg_prefix = f"[Project ID: {project_info.id}]"
 
-        info = await get_update_flag(api, project_info.id)
+        info = await get_update_flag(g.api, project_info.id)
         if info[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] is not None:
             now = parse_timestamp(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"))
             update = parse_timestamp(info[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT])
@@ -281,7 +281,7 @@ async def check_in_progress_projects(api: sly.Api):
                 and info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] is not None
             ):
                 status = await is_task_running(
-                    api, int(info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID])
+                    g.api, int(info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID])
                 )
                 if status is False:
                     logger.warning(
@@ -291,8 +291,8 @@ async def check_in_progress_projects(api: sly.Api):
                     clear_in_progress = True
 
         if clear_in_progress:
-            await clear_update_flag(api, project_info.id)
-            await set_embeddings_in_progress(api, project_info.id, False)
+            await clear_update_flag(g.api, project_info.id)
+            await set_embeddings_in_progress(g.api, project_info.id, False)
 
     logger.info("Check in progress projects task finished.")
 

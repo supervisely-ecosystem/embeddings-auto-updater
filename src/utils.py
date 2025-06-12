@@ -838,17 +838,27 @@ def get_update_flag(api: sly.Api, project_id: int) -> Optional[dict]:
     return info
 
 
-to_thread
-
-
+@to_thread
 @timeit
 def clear_update_flag(api: sly.Api, project_id: int):
+    update = False
     custom_data = api.project.get_custom_data(project_id)
-    if CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT in custom_data:
-        del custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT]
-    if CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID in custom_data:
-        del custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID]
-    api.project.update_custom_data(project_id, custom_data, silent=True)
+    if custom_data is None or custom_data == {}:
+        return
+    if (
+        CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT in custom_data
+        and custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] is not None
+    ):
+        custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] = None
+        update = True
+    if (
+        CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID in custom_data
+        and custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] is not None
+    ):
+        custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] = None
+        update = True
+    if update:
+        api.project.update_custom_data(project_id, custom_data, silent=True)
 
 
 @to_thread
