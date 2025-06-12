@@ -131,11 +131,11 @@ async def update_embeddings(
     if project_info.embeddings_in_progress is True:
         logger.info(f"{msg_prefix} Embeddings update is already in progress. Skipping.")
         return
-    if project_info.embeddings_updated_at is not None and parse_timestamp(
-        project_info.embeddings_updated_at
-    ) > parse_timestamp(project_info.updated_at):
-        logger.info(f"{msg_prefix} Is not updated since last embeddings update. Skipping.")
-        return
+    # if project_info.embeddings_updated_at is not None and parse_timestamp(
+    #     project_info.embeddings_updated_at
+    # ) > parse_timestamp(project_info.updated_at):
+    #     logger.info(f"{msg_prefix} Is not updated since last embeddings update. Skipping.")
+    #     return
     await set_embeddings_in_progress(api, project_id, True)
     await AutoRestartInfo.set_autorestart_params(api, project_id)
     try:
