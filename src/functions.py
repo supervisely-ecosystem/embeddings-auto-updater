@@ -63,14 +63,16 @@ async def process_images(
 
     msg_prefix = f"[Project ID: {project_id}]"
     vectors = []
+
+    if len(to_create) == 0 and len(to_delete) == 0:
+        logger.debug(f"{msg_prefix} Embeddings are up-to-date.")
+        return to_create, vectors
+
     to_create = await create_lite_image_infos(
         cas_size=g.IMAGE_SIZE_FOR_CAS,
         image_infos=to_create,
     )
 
-    if len(to_create) == 0 and len(to_delete) == 0:
-        logger.debug(f"{msg_prefix} All images are up-to-date.")
-        return to_create, vectors
     # if await qdrant.collection_exists(project_id):
     # Get diff of image infos, check if they are already in the Qdrant collection
 
@@ -152,23 +154,20 @@ async def update_embeddings(
             )
             images_to_create = await image_get_list_async(api, project_id)
             images_to_delete = []
-        elif parse_timestamp(project_info.embeddings_updated_at) < parse_timestamp(
-            project_info.updated_at
-        ):
+        else:
             logger.info(
                 f"{msg_prefix} Embeddings are outdated, will check for images that need to be updated."
             )
             images_to_create = await image_get_list_async(api, project_id, wo_embeddings=True)
-            if project_info.embeddings_updated_at is not None:
-                images_to_delete = await image_get_list_async(
-                    api, project_id, deleted_after=project_info.embeddings_updated_at
-                )
-            else:
-                images_to_delete = []
+            images_to_delete = await image_get_list_async(
+                api, project_id, deleted_after=project_info.embeddings_updated_at
+            )
 
-        else:
+        if len(images_to_create) == 0 and len(images_to_delete) == 0:
             logger.debug(f"{msg_prefix} Embeddings are up-to-date.")
+            await set_embeddings_in_progress(api, project_id, False)
             return
+
         await process_images(api, project_id, images_to_create, images_to_delete)
         if len(images_to_create) > 0 or len(images_to_delete) > 0:
             await set_project_embeddings_updated_at(api, project_id)
