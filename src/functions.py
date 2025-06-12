@@ -62,7 +62,7 @@ async def process_images(
     """
 
     msg_prefix = f"[Project ID: {project_id}]"
-
+    vectors = []
     to_create = await create_lite_image_infos(
         cas_size=g.IMAGE_SIZE_FOR_CAS,
         image_infos=to_create,
@@ -70,7 +70,7 @@ async def process_images(
 
     if len(to_create) == 0 and len(to_delete) == 0:
         logger.debug(f"{msg_prefix} All images are up-to-date.")
-        return to_create
+        return to_create, vectors
     # if await qdrant.collection_exists(project_id):
     # Get diff of image infos, check if they are already in the Qdrant collection
 
@@ -80,7 +80,6 @@ async def process_images(
     current_progress = 0
     total_progress = len(to_create)
 
-    vectors = []
     if len(to_create) > 0:
         logger.debug(f"{msg_prefix} Images to be vectorized: {total_progress}.")
         for image_batch in sly.batched(to_create):
@@ -104,11 +103,15 @@ async def process_images(
 
         logger.debug(f"{msg_prefix} All {total_progress} images have been vectorized.")
 
-    for image_batch in sly.batched(to_delete):
-        # Delete images from the Qdrant.
-        await qdrant.delete_collection_items(collection_name=project_id, image_infos=image_batch)
-        await set_image_embeddings_updated_at(api, image_batch, [None * len(image_batch)])
-        logger.debug(f"{msg_prefix} Deleted {len(image_batch)} images from Qdrant.")
+    if len(to_delete) > 0:
+        logger.debug(f"{msg_prefix} Vectors for images to be deleted: {len(to_delete)}.")
+        for image_batch in sly.batched(to_delete):
+            # Delete images from the Qdrant.
+            await qdrant.delete_collection_items(
+                collection_name=project_id, image_infos=image_batch
+            )
+            await set_image_embeddings_updated_at(api, image_batch, [None * len(image_batch)])
+            logger.debug(f"{msg_prefix} Deleted {len(image_batch)} images from Qdrant.")
 
     return to_create, vectors
 
@@ -166,9 +169,8 @@ async def update_embeddings(
         else:
             logger.debug(f"{msg_prefix} Embeddings are up-to-date.")
             return
-        image_infos = await process_images(api, project_id, images_to_create, images_to_delete)
-        if len(image_infos) > 0:
-            await set_image_embeddings_updated_at(api, image_infos)
+        await process_images(api, project_id, images_to_create, images_to_delete)
+        if len(images_to_create) > 0 or len(images_to_delete) > 0:
             await set_project_embeddings_updated_at(api, project_id)
     except Exception as e:
         logger.error(
