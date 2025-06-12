@@ -134,7 +134,7 @@ async def update_embeddings(
         logger.info(f"{msg_prefix} Is not updated since last embeddings update. Skipping.")
         return
     await set_embeddings_in_progress(api, project_id, True)
-    await AutoRestartInfo.set_autorestart_params(project_id)
+    await AutoRestartInfo.set_autorestart_params(api, project_id)
     try:
         if force:
             logger.info(f"{msg_prefix} Force enabled, recreating embeddings for all images.")
