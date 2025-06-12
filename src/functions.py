@@ -110,7 +110,7 @@ async def process_images(
             await qdrant.delete_collection_items(
                 collection_name=project_id, image_infos=image_batch
             )
-            await set_image_embeddings_updated_at(api, image_batch, [None * len(image_batch)])
+            await set_image_embeddings_updated_at(api, image_batch, [None] * len(image_batch))
             logger.debug(f"{msg_prefix} Deleted {len(image_batch)} images from Qdrant.")
 
     return to_create, vectors
