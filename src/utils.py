@@ -476,6 +476,19 @@ def get_filter_images_wo_embeddings() -> Dict:
     }
 
 
+def get_filter_images_with_embeddings() -> Dict:
+    """Create filter to get images that dont have embeddings.
+
+    :return: Dictionary representing the filter.
+    :rtype: Dict
+    """
+    return {
+        ApiField.FIELD: ApiField.EMBEDDINGS_UPDATED_AT,
+        ApiField.OPERATOR: "not",
+        ApiField.VALUE: None,
+    }
+
+
 def get_filter_deleted_after(timestamp: str) -> Dict:
     """Create filter to get images deleted after a specific date.
 
@@ -543,6 +556,7 @@ async def image_get_list_async(
         if ApiField.FILTER not in base_data:
             base_data[ApiField.FILTER] = []
         base_data[ApiField.FILTER].append(get_filter_deleted_after(deleted_after))
+        base_data[ApiField.FILTER].append(get_filter_images_with_embeddings())
         base_data[ApiField.SHOW_DISABLED] = True
 
     semaphore = api.get_default_semaphore()

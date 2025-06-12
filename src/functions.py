@@ -114,7 +114,7 @@ async def process_images(
             )
             await set_image_embeddings_updated_at(api, image_batch, [None] * len(image_batch))
             logger.debug(f"{msg_prefix} Deleted {len(image_batch)} images from Qdrant.")
-
+    logger.info(f"{msg_prefix} Embeddings Created: {len(to_create)}, Deleted: {len(to_delete)}.")
     return to_create, vectors
 
 
@@ -155,9 +155,7 @@ async def update_embeddings(
             images_to_create = await image_get_list_async(api, project_id)
             images_to_delete = []
         else:
-            logger.info(
-                f"{msg_prefix} Embeddings are outdated, will check for images that need to be updated."
-            )
+            logger.info(f"{msg_prefix} Checking for images that need to be updated.")
             images_to_create = await image_get_list_async(api, project_id, wo_embeddings=True)
             images_to_delete = await image_get_list_async(
                 api, project_id, deleted_after=project_info.embeddings_updated_at

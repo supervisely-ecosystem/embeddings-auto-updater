@@ -66,14 +66,18 @@ async def delete_collection_items(
     :rtype: Dict[str, Any]
     """
 
+    msg_prefix = f"[Project ID: {collection_name}]"
+
     ids = [info.id for info in image_infos]
 
-    sly.logger.debug(f"[Collection: {collection_name}] Deleting items from collection %s...", ids)
+    sly.logger.debug(f"{msg_prefix} Deleting items from collection...", extra={"ids": ids})
     try:
         await client.delete(collection_name, ids, wait=False)
-    except UnexpectedResponse:
+    except UnexpectedResponse as e:
         sly.logger.debug(
-            f"[Collection: {collection_name}] Something went wrong, while deleting {ids}."
+            f"{msg_prefix} Something went wrong, while deleting items from collection.",
+            exc_info=e,
+            extra={"ids": ids},
         )
 
 
