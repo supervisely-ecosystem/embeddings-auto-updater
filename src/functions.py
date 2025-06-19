@@ -150,7 +150,7 @@ async def update_embeddings(
         elif project_info.embeddings_updated_at is None:
             # do not need to check or create collection here, it will be created in process_images
             logger.info(
-                f"{msg_prefix} Embeddings have not been created yet. Will be crated for all required images."
+                f"{msg_prefix} Embeddings have not been created yet. Will be created for all required images."
             )
             images_to_create = await image_get_list_async(api, project_id, wo_embeddings=True)
             images_to_delete = []
