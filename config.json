@@ -8,7 +8,7 @@
 		"casHost": ""
 	},
 	"description": "Microservice for auto-generating embeddings for project images and saving them to Qdrant.",
-	"categories": ["system"],
+	"categories": ["system", "ai search"],
 	"icon": "https://github.com/supervisely-ecosystem/embeddings-auto-updater/releases/download/v0.1.0/icon.jpg",
 	"icon_cover": true,
 	"poster": "https://github.com/supervisely-ecosystem/embeddings-auto-updater/releases/download/v0.1.0/poster.jpg",
