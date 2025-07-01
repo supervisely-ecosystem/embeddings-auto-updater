@@ -373,7 +373,7 @@ async def create_lite_image_infos(
 ) -> List[ImageInfoLite]:
     """Returns lite version of image infos to cut off unnecessary data.
 
-    :param cas_size: Size of the image for CAS, it will be added to URL.
+    :param cas_size: Size of the image for CLIP, it will be added to URL.
     :type cas_size: int
     :param image_infos: List of image infos to get lite version from.
     :type image_infos: List[sly.ImageInfo]
@@ -880,3 +880,15 @@ def is_task_running(api: sly.Api, task_id: int) -> Optional[bool]:
         sly.logger.error("Error checking task status: %s", e, exc_info=True)
         status = None
     return status
+
+
+def get_app_host(api: sly.Api, slug: str) -> str:
+    """Get the app host URL from the Supervisely API.
+
+    :param api: Instance of supervisely API.
+    :type api: sly.Api
+    :return: The app host URL.
+    :rtype: str
+    """
+    host = api.server_address + "/net/" + api.app.get_session_token(slug)
+    return host

@@ -105,19 +105,19 @@ class CasUrlClient(CasClient):
         self.__wait_for_start()
 
     def __wait_for_start(self):
-        logger.info("Connecting to CAS at %s...", self.url)
+        logger.info("Connecting to CLIP at %s...", self.url)
         t = time.monotonic()
         delay = 1
         last_exception = None
         while time.monotonic() - t < self.STARTUP_TIMEOUT:
             try:
                 self.client.profile()
-                logger.info("Connected to CAS at %s!", self.url)
+                logger.info("Connected to CLIP at %s!", self.url)
                 return
             except Exception as e:
                 last_exception = e
                 logger.debug(
-                    "Failed to connect to CAS at %s. Retrying after %d seconds...",
+                    "Failed to connect to CLIP at %s. Retrying after %d seconds...",
                     self.url,
                     delay,
                     exc_info=True,
@@ -125,12 +125,12 @@ class CasUrlClient(CasClient):
                 time.sleep(delay)
                 if delay < 4:
                     delay *= 2
-        raise RuntimeError(f"Failed to connect to CAS at {self.url}") from last_exception
+        raise RuntimeError(f"Failed to connect to CLIP at {self.url}") from last_exception
 
     @with_retries(retries=5, sleep_time=2)
     @timeit
     async def get_vectors(self, queries: List[str]) -> List[np.ndarray]:
-        """Use CAS to get vectors from the list of queries.
+        """Use CLIP to get vectors from the list of queries.
         List of queries is a list of URLs for images or text prompts.
 
         :param queries: List of queries (URLs for images or text prompts).
@@ -143,12 +143,12 @@ class CasUrlClient(CasClient):
 
 
 def _init_client() -> CasClient:
-    if isinstance(g.cas_host, int):
+    if isinstance(g.clip_host, int):
         return CasTaskClient(
-            g.api, g.cas_host
-        )  # to switch on this mode you need to refactor processing of cas_host in globals.py
+            g.api, g.clip_host
+        )  # to switch on this mode you need to refactor processing of clip_host in globals.py
     else:
-        return CasUrlClient(g.cas_host)
+        return CasUrlClient(g.clip_host)
 
 
 client = _init_client()

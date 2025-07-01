@@ -69,7 +69,7 @@ async def process_images(
         return to_create, vectors
 
     to_create = await create_lite_image_infos(
-        cas_size=g.IMAGE_SIZE_FOR_CAS,
+        cas_size=g.IMAGE_SIZE_FOR_CLIP,
         image_infos=to_create,
     )
 
@@ -238,7 +238,8 @@ async def auto_update_all_embeddings():
     logger.info("Auto update all embeddings task started.")
 
     project_infos: List[sly.ProjectInfo] = await get_all_projects(g.api)
-    random.shuffle(project_infos)  # to
+    # to randomize the order of projects for processing in several app instances
+    random.shuffle(project_infos)
     for project_info in project_infos:
         # do not pass info in the following function, it will be fetched inside
         # it needs to work with the latest project info state

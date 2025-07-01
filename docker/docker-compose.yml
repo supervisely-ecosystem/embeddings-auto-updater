@@ -1,0 +1,23 @@
+services:
+  app:
+    image: supervisely/embedding-services:${VERSION}
+    build: .
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL}
+      TEAM_ID: "${TEAM_ID}"
+      WORKSPACE_ID: "${WORKSPACE_ID}"
+      SLY_SERVER_ADDRESS: "${SLY_SERVER_ADDRESS}"
+      SLY_API_TOKEN: "${SLY_API_TOKEN}"
+      QDRANT_HOST: ${QDRANT_HOST}
+      CLIP_HOST: ${CLIP_HOST}
+      UPDATE_INTERVAL: ${UPDATE_INTERVAL} # minutes, default is 10 minutes
+      UPDATE_FRAME: ${UPDATE_FRAME} # hours, default is 24 hours
+    volumes:
+      - ./src:/app/src:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 40s

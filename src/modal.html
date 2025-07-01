@@ -24,7 +24,7 @@
 		</sly-field>
 		<el-input
 			placeholder="E.g. 1234 or https://192.168.1.1:51000"
-			v-model="state.casHost"
+			v-model="state.clipHost"
 		></el-input>
 	</div>
 	<div
@@ -40,7 +40,7 @@
 			value="10"
 			:min="1"
 			:max="1440"
-			v-model="state.update_interval"
+			v-model="state.updateInterval"
 		></el-input-number>
 	</div>
 	<div
@@ -56,7 +56,7 @@
 			value="24"
 			:min="1"
 			:max="168"
-			v-model="state.update_frame"
+			v-model="state.updateFrame"
 		></el-input-number>
 	</div>
 </div>
