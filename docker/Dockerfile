@@ -8,6 +8,8 @@ WORKDIR /app
 
 COPY src /app/src
 
+RUN mkdir -p /app/state
+
 EXPOSE 80
 
 ENTRYPOINT ["uvicorn", "src.main:app"]

@@ -19,6 +19,7 @@ team_id = sly.env.team_id()
 workspace_id = sly.env.workspace_id()
 sly.logger.debug("Team ID: %s, Workspace ID: %s", team_id, workspace_id)
 
+generator_host = os.getenv("modal.state.generatorHost") or os.getenv("GENERATOR_HOST")
 
 qdrant_host = os.getenv("modal.state.qdrantHost") or os.getenv("QDRANT_HOST")
 
@@ -54,10 +55,11 @@ sly.logger.info("CLIP host: %s", clip_host)
 IMAGE_SIZE_FOR_CLIP = 224
 UPDATE_EMBEDDINGS_INTERVAL = update_interval  # minutes, default is 10
 CHECK_INPROGRESS_INTERVAL = 4  # hours, default is 4
+CHECK_INPROGRESS_STATUS_ENDPOINT = generator_host.rstrip("/") + "/check_background_task_status"
 # endregion
 
 sly.logger.debug("Image size for CLIP: %s", IMAGE_SIZE_FOR_CLIP)
 sly.logger.debug("Update interval: %s", UPDATE_EMBEDDINGS_INTERVAL)
 sly.logger.debug("Update frame: %s", update_frame)
 
-background_tasks = {}
+current_task = None # project_id which is currently processed creating embeddings

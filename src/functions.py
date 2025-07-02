@@ -10,16 +10,19 @@ from supervisely.sly_logger import logger
 import src.cas as cas
 import src.globals as g
 import src.qdrant as qdrant
-from src.autorestart import AutoRestartInfo
+from src.autorestart import PROJECT_KEY, AutoRestartInfo
 from src.utils import (
     ApiField,
     CustomDataFields,
+    ResponseFields,
+    ResponseStatus,
     clear_update_flag,
     create_lite_image_infos,
     datetime,
     fix_vectors,
     get_all_projects,
     get_project_info,
+    get_project_inprogress_status,
     get_team_info,
     get_update_flag,
     image_get_list_async,
@@ -139,7 +142,8 @@ async def update_embeddings(
     #     logger.info(f"{msg_prefix} Is not updated since last embeddings update. Skipping.")
     #     return
     await set_embeddings_in_progress(api, project_id, True)
-    await AutoRestartInfo.set_autorestart_params(api, project_id)
+    g.current_task = project_id
+    await AutoRestartInfo.set_autorestart_params(project_id)
     try:
         if force:
             logger.info(f"{msg_prefix} Force enabled, recreating embeddings for all images.")
@@ -175,6 +179,7 @@ async def update_embeddings(
             exc_info=True,
             extra={"project_id": project_id},
         )
+    g.current_task = None
     await set_embeddings_in_progress(api, project_id, False)
 
 
@@ -244,7 +249,7 @@ async def auto_update_all_embeddings():
         # do not pass info in the following function, it will be fetched inside
         # it needs to work with the latest project info state
         await auto_update_embeddings(g.api, project_info.id)
-    await AutoRestartInfo.clear_autorestart_params(g.api)
+    await AutoRestartInfo.clear_autorestart_params()
     logger.info("Auto update all embeddings task finished.")
 
 
@@ -264,9 +269,12 @@ async def check_in_progress_projects():
     logger.info("Check in progress projects task started.")
     project_infos: List[sly.ProjectInfo] = await get_all_projects(g.api, filters=filters)
     for project_info in project_infos:
-
-        clear_in_progress = False
+        should_clear_in_progress = False
         msg_prefix = f"[Project ID: {project_info.id}]"
+
+        if project_info.id == g.current_task:
+            logger.debug(f"{msg_prefix}] Is in progress now with auto update task. Skipping...")
+            continue
 
         info = await get_update_flag(g.api, project_info.id)
         if info[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] is not None:
@@ -277,21 +285,18 @@ async def check_in_progress_projects():
                 f"{msg_prefix} Update started at {info[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT]}, "
                 f"hours difference: {hours_diff:.2f}"
             )
-            if (
-                hours_diff >= g.update_frame
-                and info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] is not None
-            ):
-                status = await is_task_running(
-                    g.api, int(info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID])
+            if hours_diff >= g.update_frame:
+                response = await get_project_inprogress_status(
+                    g.CHECK_INPROGRESS_STATUS_ENDPOINT, project_info.id
                 )
-                if status is False:
+                if response.get(ResponseFields.STATUS) is not ResponseStatus.IN_PROGRESS:
                     logger.warning(
                         f"{msg_prefix} Task {info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID]} is not running, "
                         "clearing in progress flag."
                     )
-                    clear_in_progress = True
+                    should_clear_in_progress = True
 
-        if clear_in_progress:
+        if should_clear_in_progress:
             await clear_update_flag(g.api, project_info.id)
             await set_embeddings_in_progress(g.api, project_info.id, False)
 
@@ -328,10 +333,10 @@ async def safe_check_autorestart():
     It ensures that the autorestart check does not disrupt the normal operation of the application.
     """
     try:
-        autorestart = AutoRestartInfo.check_autorestart(g.api)
+        autorestart = AutoRestartInfo.check_autorestart()
         sly.logger.debug("Autorestart info checked")
         if autorestart is not None:
-            project_id = autorestart.deploy_params.get("project_id", None)
+            project_id = autorestart.deploy_params.get(PROJECT_KEY, None)
             if project_id is not None:
                 try:
                     sly.logger.info(

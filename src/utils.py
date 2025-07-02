@@ -5,6 +5,7 @@ from functools import partial, wraps
 from time import perf_counter
 from typing import Callable, Dict, List, Optional, Union
 
+import httpx
 import supervisely as sly
 from supervisely._utils import batched, resize_image_url
 from supervisely.api.module_api import ApiField
@@ -815,7 +816,6 @@ def set_update_flag(api: sly.Api, project_id: int):
     custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] = datetime.now(
         timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-    custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] = api.task_id
     api.project.update_custom_data(project_id, custom_data, silent=True)
 
 
@@ -825,15 +825,10 @@ def get_update_flag(api: sly.Api, project_id: int) -> Optional[dict]:
     custom_data = api.project.get_custom_data(project_id)
     info = {
         CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT: None,
-        CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID: None,
     }
     if CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT in custom_data:
         info[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] = custom_data[
             CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT
-        ]
-    if CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID in custom_data:
-        info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] = custom_data[
-            CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID
         ]
     return info
 
@@ -841,23 +836,11 @@ def get_update_flag(api: sly.Api, project_id: int) -> Optional[dict]:
 @to_thread
 @timeit
 def clear_update_flag(api: sly.Api, project_id: int):
-    update = False
     custom_data = api.project.get_custom_data(project_id)
     if custom_data is None or custom_data == {}:
         return
-    if (
-        CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT in custom_data
-        and custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] is not None
-    ):
-        custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] = None
-        update = True
-    if (
-        CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID in custom_data
-        and custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] is not None
-    ):
-        custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] = None
-        update = True
-    if update:
+    if CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT in custom_data:
+        del custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT]
         api.project.update_custom_data(project_id, custom_data, silent=True)
 
 
@@ -890,5 +873,21 @@ def get_app_host(api: sly.Api, slug: str) -> str:
     :return: The app host URL.
     :rtype: str
     """
-    host = api.server_address + "/net/" + api.app.get_session_token(slug)
+    host = api.server_address.rstrip("/") + "/net/" + api.app.get_session_token(slug)
     return host
+
+@to_thread
+@timeit
+def get_project_inprogress_status(endpoint: str, id: int) -> dict:
+    """Get the project in-progress status by ID by sending a request to the service endpoint.
+    
+    :param host: Host URL of the service.
+    :type host: str
+    :param id: ID of the project.
+    :type id: int
+    :return: Dictionary with project in-progress status.
+    :rtype: dict
+    """
+    
+    response = httpx.post(endpoint, json={"task_id": id})
+    return response.json()

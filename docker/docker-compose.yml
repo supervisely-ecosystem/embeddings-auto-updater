@@ -1,6 +1,6 @@
 services:
   app:
-    image: supervisely/embedding-services:${VERSION}
+    image: supervisely/embeddings-auto-updater:${VERSION}
     build: .
     environment:
       LOG_LEVEL: ${LOG_LEVEL}
@@ -14,6 +14,7 @@ services:
       UPDATE_FRAME: ${UPDATE_FRAME} # hours, default is 24 hours
     volumes:
       - ./src:/app/src:ro
+      - ./project_embeddings_state:/app/state
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
