@@ -9,7 +9,7 @@ if sly.is_development():
     load_dotenv(os.path.expanduser("~/supervisely.env"))
     load_dotenv("local.env")
 
-api = sly.Api.from_env(ignore_task_id=True)
+api = sly.Api(ignore_task_id=True)
 sly.logger.debug("Connected to Supervisely API: %s", api.server_address)
 api.file.load_dotenv_from_teamfiles(override=True)
 clip_slug = "supervisely-ecosystem/deploy-clip-as-service"

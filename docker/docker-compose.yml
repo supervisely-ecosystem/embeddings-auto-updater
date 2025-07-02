@@ -6,8 +6,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL}
       TEAM_ID: "${TEAM_ID}"
       WORKSPACE_ID: "${WORKSPACE_ID}"
-      SLY_SERVER_ADDRESS: "${SLY_SERVER_ADDRESS}"
-      SLY_API_TOKEN: "${SLY_API_TOKEN}"
+      SERVER_ADDRESS: "${SERVER_ADDRESS}"
+      API_TOKEN: "${API_TOKEN}"
       QDRANT_HOST: ${QDRANT_HOST}
       CLIP_HOST: ${CLIP_HOST}
       UPDATE_INTERVAL: ${UPDATE_INTERVAL} # minutes, default is 10 minutes
