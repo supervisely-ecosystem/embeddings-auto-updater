@@ -12,5 +12,7 @@ RUN mkdir -p /app/state
 
 EXPOSE 80
 
-ENTRYPOINT ["uvicorn", "src.main:app"]
+ENV PYTHONPATH="/app/src"
+
+ENTRYPOINT ["python3", "-u", "-m", "uvicorn", "src.main:app"]
 CMD ["--host", "0.0.0.0", "--port", "80"]
