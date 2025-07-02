@@ -8,7 +8,7 @@ from supervisely import logger
 
 from src.utils import to_thread
 
-FILE_PATH: str = "/state/current_project.json"
+FILE_PATH: str = "./state/current_project.json"
 PROJECT_KEY = "project_id"
 
 
