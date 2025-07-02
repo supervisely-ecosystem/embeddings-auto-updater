@@ -4,6 +4,8 @@ COPY dev_requirements.txt /req/dev_requirements.txt
 
 RUN pip install --no-cache-dir -r /req/dev_requirements.txt
 
+RUN apt-get update && apt-get install -y wireguard iproute2
+
 WORKDIR /app
 
 COPY src /app/src

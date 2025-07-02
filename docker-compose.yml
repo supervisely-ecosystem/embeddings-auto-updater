@@ -9,7 +9,8 @@ services:
       SERVER_ADDRESS: "${SERVER_ADDRESS}"
       API_TOKEN: "${API_TOKEN}"
       QDRANT_HOST: ${QDRANT_HOST}
-      CLIP_HOST: ${CLIP_HOST}
+      CLIP_HOST: ${CLIP_HOST} # CLIP application service
+      GENERATOR_HOST: ${GENERATOR_HOST} # embeddings generator service
       UPDATE_INTERVAL: ${UPDATE_INTERVAL} # minutes, default is 10 minutes
       UPDATE_FRAME: ${UPDATE_FRAME} # hours, default is 24 hours
     volumes:

@@ -51,6 +51,7 @@ if not clip_host:
 
 sly.logger.info("Qdrant host: %s", qdrant_host)
 sly.logger.info("CLIP host: %s", clip_host)
+sly.logger.info("Embeddings Generator host: %s", generator_host)
 
 # region constants
 IMAGE_SIZE_FOR_CLIP = 224
@@ -60,7 +61,7 @@ CHECK_INPROGRESS_STATUS_ENDPOINT = generator_host.rstrip("/") + "/check_backgrou
 # endregion
 
 sly.logger.debug("Image size for CLIP: %s", IMAGE_SIZE_FOR_CLIP)
-sly.logger.debug("Update interval: %s", UPDATE_EMBEDDINGS_INTERVAL)
-sly.logger.debug("Update frame: %s", update_frame)
+sly.logger.debug("Update interval in minutes: %s", UPDATE_EMBEDDINGS_INTERVAL)
+sly.logger.debug("Update frame in hours: %s", update_frame)
 
 current_task = None  # project_id which is currently processed creating embeddings
