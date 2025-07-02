@@ -12,7 +12,7 @@ if sly.is_development():
 api = sly.Api.from_env(ignore_task_id=True)
 sly.logger.debug("Connected to Supervisely API: %s", api.server_address)
 api.file.load_dotenv_from_teamfiles(override=True)
-clip_slug = "bb17e33346af1da8b807ab86b714cf9a/clip-service"  #! replace after release
+clip_slug = "supervisely-ecosystem/deploy-clip-as-service"
 
 # region envvars
 team_id = sly.env.team_id()
@@ -24,6 +24,7 @@ generator_host = os.getenv("modal.state.generatorHost") or os.getenv("GENERATOR_
 qdrant_host = os.getenv("modal.state.qdrantHost") or os.getenv("QDRANT_HOST")
 
 clip_host = os.getenv("modal.state.clipHost", None) or os.getenv("CLIP_HOST", None)
+
 if clip_host is None:
     clip_host = get_app_host(api, clip_slug)
 
@@ -62,4 +63,4 @@ sly.logger.debug("Image size for CLIP: %s", IMAGE_SIZE_FOR_CLIP)
 sly.logger.debug("Update interval: %s", UPDATE_EMBEDDINGS_INTERVAL)
 sly.logger.debug("Update frame: %s", update_frame)
 
-current_task = None # project_id which is currently processed creating embeddings
+current_task = None  # project_id which is currently processed creating embeddings
