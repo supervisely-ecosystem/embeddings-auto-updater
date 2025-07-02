@@ -3,6 +3,7 @@ services:
     image: supervisely/embeddings-auto-updater:${VERSION}
     build: .
     environment:
+      ENV: ${ENV} # production, development, etc.
       LOG_LEVEL: ${LOG_LEVEL}
       TEAM_ID: "${TEAM_ID}"
       WORKSPACE_ID: "${WORKSPACE_ID}"
