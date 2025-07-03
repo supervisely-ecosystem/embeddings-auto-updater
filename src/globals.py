@@ -40,7 +40,7 @@ if access_token is None and internal_address is not None and api_token is None:
 if internal_address is not None and api_token is None:
     temp_api = sly.Api(ignore_task_id=True)
     response = temp_api.post("instance.admin-info", data={"accessToken": access_token})
-    token = response.json()["id"]
+    token = response.json()["apiToken"]
     sly.logger.debug("Using Supervisely API token: %s", token)
 elif api_token is not None:
     token = api_token
