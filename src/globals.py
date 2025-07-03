@@ -11,18 +11,28 @@ if sly.is_development():
 
 internal_address = os.getenv("SUPERVISELY_API_SERVER_ADDRESS", None)
 sly.logger.debug("Internal Supervisely API server address: %s", internal_address)
+if internal_address == "":
+    internal_address = None
+    del os.environ["SUPERVISELY_API_SERVER_ADDRESS"]
+    sly.logger.debug("Removed empty SUPERVISELY_API_SERVER_ADDRESS from environment")
+
 api_token = os.getenv("API_TOKEN", None)
 sly.logger.debug("API token from environment: %s", api_token)
-if (internal_address is not None and internal_address != "") and (api_token is None or api_token == ""):
+if api_token == "":
+    api_token = None
+    del os.environ["API_TOKEN"]
+    sly.logger.debug("Removed empty API_TOKEN from environment")
+
+if internal_address is not None and api_token is None:
     temp_api = sly.Api(ignore_task_id=True)
     response = temp_api.post(
         "instance.admin-info", data={"accessToken": "SUPERVISELY_API_ACCESS_TOKEN"}
     )
     token = response.json()["id"]
     sly.logger.debug("Using Supervisely API token: %s", token)
-elif api_token is not None and api_token != "":
+elif api_token is not None:
     token = api_token
-    sly.logger.debug("Using Supervisely API token from environment: %s", token)
+    sly.logger.debug("Using Supervisely API token from environment")
 else:
     token = None
     sly.logger.debug("No internal Supervisely API server address found, using public API")
