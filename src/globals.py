@@ -48,7 +48,7 @@ qdrant_host = os.getenv("modal.state.qdrantHost") or os.getenv("QDRANT_HOST")
 clip_host = os.getenv("modal.state.clipHost", None) or os.getenv("CLIP_HOST", None)
 
 sly.logger.debug("CLIP host from environment: %s", clip_host)
-if clip_host is None or "":
+if clip_host is None or clip_host == "":
     clip_host = get_app_host(api, clip_slug)
 
 try:
