@@ -127,13 +127,14 @@ async def update_embeddings(
     project_id: int,
     force: bool = False,
     project_info: Optional[sly.ProjectInfo] = None,
+    skip_in_progress_check: bool = False,
 ):
     msg_prefix = f"[Project ID: {project_id}]"
 
     if project_info is None:
         project_info = await get_project_info(api, project_id)
 
-    if project_info.embeddings_in_progress is True:
+    if project_info.embeddings_in_progress is True and not skip_in_progress_check:
         logger.info(f"{msg_prefix} Embeddings update is already in progress. Skipping.")
         return
     # if project_info.embeddings_updated_at is not None and parse_timestamp(
@@ -321,7 +322,7 @@ async def continue_project_processing(project_id: int):
     logger.info(
         f"{msg_prefix} Continue processing after App restart.",
     ),
-    await update_embeddings(g.api, project_id, project_info=info)
+    await update_embeddings(g.api, project_id, project_info=info, skip_in_progress_check=True)
     logger.info(
         f"{msg_prefix} Update embeddings after App restart finished.",
     )
