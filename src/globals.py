@@ -63,8 +63,15 @@ except ValueError:
     if clip_host[:4] not in ["http", "ws:/", "grpc"]:
         clip_host = "grpc://" + clip_host
 
-update_interval = int(os.getenv("modal.state.updateInterval") or os.getenv("UPDATE_INTERVAL"))
-update_frame = int(os.getenv("modal.state.updateFrame") or os.getenv("UPDATE_FRAME"))
+update_interval = os.getenv("modal.state.updateInterval") or os.getenv("UPDATE_INTERVAL")
+update_interval = (
+    int(update_interval) if update_interval and update_interval != "" else 10
+)  # default value in minutes
+update_frame = os.getenv("modal.state.updateFrame") or os.getenv("UPDATE_FRAME")
+update_frame = (
+    int(update_frame) if update_frame and update_frame != "" else 12
+)  # default value in hours
+
 # endregion
 
 if not qdrant_host:
