@@ -1,12 +1,15 @@
 services:
   app:
     image: supervisely/embeddings-auto-updater:${VERSION}
-    build: .
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
     environment:
       ENV: "production" # production, development, etc.
       LOG_LEVEL: "${LOG_LEVEL}"
-      SERVER_ADDRESS: "${SERVER_ADDRESS}"
-      API_TOKEN: "${API_TOKEN}"
+      SERVER_ADDRESS: "${SERVER_ADDRESS}" # one of the public or internal addresses of the Supervisely server must be provided
+      SUPERVISELY_API_SERVER_ADDRESS: "${SUPERVISELY_API_SERVER_ADDRESS}" # one of the public or internal addresses of the Supervisely server must be provided
+      API_TOKEN: "${API_TOKEN}" # you could set token for both publick and internal addresses, in case of internal address it will skip retrieving token from the server
       QDRANT_HOST: "${QDRANT_HOST}"
       CLIP_HOST: "${CLIP_HOST}" # CLIP application service, dont pass anything to search any available app instance automatically
       GENERATOR_HOST: "${GENERATOR_HOST}" # embeddings generator service, must be provided
