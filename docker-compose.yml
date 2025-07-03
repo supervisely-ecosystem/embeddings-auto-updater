@@ -3,17 +3,15 @@ services:
     image: supervisely/embeddings-auto-updater:${VERSION}
     build: .
     environment:
-      ENV: ${ENV} # production, development, etc.
-      LOG_LEVEL: ${LOG_LEVEL}
-      TEAM_ID: "${TEAM_ID}"
-      WORKSPACE_ID: "${WORKSPACE_ID}"
+      ENV: "production" # production, development, etc.
+      LOG_LEVEL: "${LOG_LEVEL}"
       SERVER_ADDRESS: "${SERVER_ADDRESS}"
       API_TOKEN: "${API_TOKEN}"
-      QDRANT_HOST: ${QDRANT_HOST}
-      CLIP_HOST: ${CLIP_HOST} # CLIP application service
-      GENERATOR_HOST: ${GENERATOR_HOST} # embeddings generator service
+      QDRANT_HOST: "${QDRANT_HOST}"
+      CLIP_HOST: "${CLIP_HOST}" # CLIP application service, dont pass anything to search any available app instance automatically
+      GENERATOR_HOST: "${GENERATOR_HOST}" # embeddings generator service, must be provided
       UPDATE_INTERVAL: ${UPDATE_INTERVAL} # minutes, default is 10 minutes
-      UPDATE_FRAME: ${UPDATE_FRAME} # hours, default is 24 hours
+      UPDATE_FRAME: ${UPDATE_FRAME} # hours, default is 12 hours
     volumes:
       - ./src:/app/src:ro
       - ./project_embeddings_state:/app/state

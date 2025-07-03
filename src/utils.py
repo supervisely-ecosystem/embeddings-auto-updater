@@ -873,7 +873,10 @@ def get_app_host(api: sly.Api, slug: str) -> str:
     :return: The app host URL.
     :rtype: str
     """
-    host = api.server_address.rstrip("/") + "/net/" + api.app.get_session_token(slug)
+    session_token = api.app.get_session_token(slug)
+    sly.logger.debug("Session token for CLIP slug %s: %s", slug, session_token)
+    host = api.server_address.rstrip("/") + "/net/" + session_token
+    sly.logger.debug("App host URL for CLIP: %s", host)
     return host
 
 @to_thread

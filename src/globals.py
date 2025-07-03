@@ -15,16 +15,11 @@ api.file.load_dotenv_from_teamfiles(override=True)
 clip_slug = "supervisely-ecosystem/deploy-clip-as-service"
 
 # region envvars
-team_id = sly.env.team_id()
-workspace_id = sly.env.workspace_id()
-sly.logger.debug("Team ID: %s, Workspace ID: %s", team_id, workspace_id)
-
 generator_host = os.getenv("modal.state.generatorHost") or os.getenv("GENERATOR_HOST")
-
 qdrant_host = os.getenv("modal.state.qdrantHost") or os.getenv("QDRANT_HOST")
-
 clip_host = os.getenv("modal.state.clipHost", None) or os.getenv("CLIP_HOST", None)
 
+sly.logger.debug("CLIP host from environment: %s", clip_host)
 if clip_host is None:
     clip_host = get_app_host(api, clip_slug)
 
@@ -48,6 +43,8 @@ if not qdrant_host:
     raise ValueError("QDRANT_HOST is not set in the environment variables")
 if not clip_host:
     raise ValueError("CLIP_HOST is not set in the environment variables")
+if not generator_host:
+    raise ValueError("GENERATOR_HOST is not set in the environment variables")
 
 sly.logger.info("Qdrant host: %s", qdrant_host)
 sly.logger.info("CLIP host: %s", clip_host)
@@ -56,7 +53,7 @@ sly.logger.info("Embeddings Generator host: %s", generator_host)
 # region constants
 IMAGE_SIZE_FOR_CLIP = 224
 UPDATE_EMBEDDINGS_INTERVAL = update_interval  # minutes, default is 10
-CHECK_INPROGRESS_INTERVAL = 4  # hours, default is 4
+CHECK_INPROGRESS_INTERVAL = update_frame  # hours, default is 12
 CHECK_INPROGRESS_STATUS_ENDPOINT = generator_host.rstrip("/") + "/check_background_task_status"
 # endregion
 
