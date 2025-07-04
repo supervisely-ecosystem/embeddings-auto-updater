@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import supervisely as sly
@@ -60,7 +61,7 @@ clip_host = os.getenv("modal.state.clipHost", None) or os.getenv("CLIP_HOST", No
 
 sly.logger.debug("CLIP host from environment: %s", clip_host)
 if clip_host is None or clip_host == "":
-    clip_host = get_app_host(api, clip_slug)
+    clip_host = asyncio.run(get_app_host(api, clip_slug))
 
 try:
     clip_host = int(clip_host)
