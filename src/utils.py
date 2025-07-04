@@ -908,11 +908,9 @@ def check_generator_is_ready(endpoint: str) -> bool:
     :rtype: bool
     """
     try:
-        response = httpx.get(f"{endpoint.rstrip("/")}/is_ready")
+        response = httpx.get(f"{endpoint.rstrip('/')}/is_ready")
         status = response.json().get("status", "")
-        sly.logger.debug(
-            "Received response from Generator service: %s", status
-        )
+        sly.logger.debug("Received response from Generator service: %s", status)
         if status == "ready":
             sly.logger.debug("Generator service is ready.")
             return True
