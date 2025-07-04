@@ -879,11 +879,12 @@ def get_app_host(api: sly.Api, slug: str) -> str:
     sly.logger.debug("App host URL for CLIP: %s", host)
     return host
 
+
 @to_thread
 @timeit
 def get_project_inprogress_status(endpoint: str, id: int) -> dict:
     """Get the project in-progress status by ID by sending a request to the service endpoint.
-    
+
     :param host: Host URL of the service.
     :type host: str
     :param id: ID of the project.
@@ -891,6 +892,31 @@ def get_project_inprogress_status(endpoint: str, id: int) -> dict:
     :return: Dictionary with project in-progress status.
     :rtype: dict
     """
-    
+
     response = httpx.post(endpoint, json={"task_id": id})
     return response.json()
+
+
+@to_thread
+@timeit
+def check_generator_is_ready(endpoint: str) -> bool:
+    """Check if the generator service is ready by sending a request to the service endpoint.
+
+    :param endpoint: Endpoint URL of the generator service.
+    :type endpoint: str
+    :return: True if the generator service is ready, False otherwise.
+    :rtype: bool
+    """
+    try:
+        response = httpx.get(f"{endpoint.rstrip("/")}/is_ready")
+        status = response.json().get("status", "")
+        sly.logger.debug(
+            "Received response from Generator service: %s", status
+        )
+        if status == "ready":
+            sly.logger.debug("Generator service is ready.")
+            return True
+    except Exception as e:
+        sly.logger.error("Error checking generator service readiness: %s", e, exc_info=True)
+    sly.logger.debug("Generator service is not ready or an error occurred.")
+    return False

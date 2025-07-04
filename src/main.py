@@ -1,13 +1,17 @@
+import datetime
+
 import supervisely as sly
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import src.globals as g
+from src.cas import client as clip_client
 from src.functions import (
     auto_update_all_embeddings,
     check_in_progress_projects,
     safe_check_autorestart,
 )
-from src.utils import run_safe
+from src.qdrant import client as qdrant_client
+from src.utils import check_generator_is_ready, run_safe
 
 app = sly.Application()
 server = app.get_server()
@@ -63,4 +67,56 @@ except Exception as e:
 
 @server.get("/health")
 async def health_check():
-    return {"status": "healthy", "scheduler_running": scheduler.running}
+    status = "healthy"
+    checks = {}
+    try:
+        # Check Qdrant connection
+        try:
+            await qdrant_client.info()
+            checks["qdrant"] = "healthy"
+        except Exception as e:
+            checks["qdrant"] = f"unhealthy: {str(e)}"
+            status = "degraded"
+
+        # Check CLIP service availability
+        try:
+            if await clip_client.client._async_client.is_flow_ready():
+                checks["clip"] = "healthy"
+            else:
+                checks["clip"] = "unhealthy: CLIP service is not ready"
+                status = "degraded"
+        except Exception as e:
+            checks["clip"] = f"unhealthy: {str(e)}"
+            status = "degraded"
+
+        # Check Generator service availability
+        try:
+
+            if await check_generator_is_ready(endpoint=g.generator_host):
+                checks["generator"] = "healthy"
+            else:
+                checks["generator"] = "unhealthy: Generator service is not ready"
+                status = "degraded"
+        except Exception as e:
+            checks["generator"] = f"unhealthy: {str(e)}"
+            status = "degraded"
+
+        # Check if the scheduler is running
+        try:
+            if scheduler.running:
+                checks["scheduler"] = "healthy"
+            else:
+                checks["scheduler"] = "unhealthy: Scheduler is not running"
+                status = "degraded"
+        except Exception as e:
+            checks["scheduler"] = f"unhealthy: {str(e)}"
+            status = "degraded"
+
+    except Exception as e:
+        status = "unhealthy"
+        checks["general"] = f"error: {str(e)}"
+    return {
+        "status": status,
+        "checks": checks,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+    }

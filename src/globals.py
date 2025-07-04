@@ -51,7 +51,6 @@ else:
 
 api = sly.Api(ignore_task_id=True, token=token)
 sly.logger.debug("Connected to Supervisely API: %s", api.server_address)
-api.file.load_dotenv_from_teamfiles(override=True)
 clip_slug = "supervisely-ecosystem/deploy-clip-as-service"
 
 # region envvars

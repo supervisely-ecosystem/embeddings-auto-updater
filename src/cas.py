@@ -1,7 +1,7 @@
 import os
 import time
 import warnings
-from typing import List, Optional
+from typing import List, Optional, Union
 from urllib.parse import urlparse
 
 import numpy as np
@@ -142,7 +142,7 @@ class CasUrlClient(CasClient):
         return vectors.tolist()
 
 
-def _init_client() -> CasClient:
+def _init_client() -> Union[CasUrlClient, CasClient]:
     if isinstance(g.clip_host, int):
         return CasTaskClient(
             g.api, g.clip_host
