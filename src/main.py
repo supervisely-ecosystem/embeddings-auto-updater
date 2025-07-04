@@ -2,6 +2,7 @@ import datetime
 
 import supervisely as sly
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from fastapi.responses import JSONResponse
 
 import src.globals as g
 from src.cas import client as clip_client
@@ -69,6 +70,7 @@ except Exception as e:
 async def health_check():
     status = "healthy"
     checks = {}
+    status_code = 200
     try:
         # Check Qdrant connection
         try:
@@ -77,6 +79,7 @@ async def health_check():
         except Exception as e:
             checks["qdrant"] = f"unhealthy: {str(e)}"
             status = "degraded"
+            status_code = 503
 
         # Check CLIP service availability
         try:
@@ -85,9 +88,11 @@ async def health_check():
             else:
                 checks["clip"] = "unhealthy: CLIP service is not ready"
                 status = "degraded"
+                status_code = 503
         except Exception as e:
             checks["clip"] = f"unhealthy: {str(e)}"
             status = "degraded"
+            status_code = 503
 
         # Check Generator service availability
         try:
@@ -97,9 +102,11 @@ async def health_check():
             else:
                 checks["generator"] = "unhealthy: Generator service is not ready"
                 status = "degraded"
+                status_code = 503
         except Exception as e:
             checks["generator"] = f"unhealthy: {str(e)}"
             status = "degraded"
+            status_code = 503
 
         # Check if the scheduler is running
         try:
@@ -108,15 +115,23 @@ async def health_check():
             else:
                 checks["scheduler"] = "unhealthy: Scheduler is not running"
                 status = "degraded"
+                status_code = 503
         except Exception as e:
             checks["scheduler"] = f"unhealthy: {str(e)}"
             status = "degraded"
+            status_code = 503
 
     except Exception as e:
         status = "unhealthy"
         checks["general"] = f"error: {str(e)}"
-    return {
-        "status": status,
-        "checks": checks,
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-    }
+        status_code = 500
+    return JSONResponse(
+        {
+            "status": status,
+            "checks": checks,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S.%fZ"
+            ),
+        },
+        status_code=status_code,
+    )
