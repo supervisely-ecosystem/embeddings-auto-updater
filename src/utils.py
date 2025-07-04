@@ -865,8 +865,6 @@ def is_task_running(api: sly.Api, task_id: int) -> Optional[bool]:
     return status
 
 
-@with_retries(retries=10, sleep_time=30)
-@to_thread
 def get_app_host(api: sly.Api, slug: str) -> str:
     """Get the app host URL from the Supervisely API.
 
