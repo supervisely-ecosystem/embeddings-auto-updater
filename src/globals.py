@@ -1,10 +1,7 @@
-import asyncio
 import os
 
 import supervisely as sly
 from dotenv import load_dotenv
-
-from src.utils import get_app_host
 
 if sly.is_development():
     load_dotenv(os.path.expanduser("~/supervisely.env"))
@@ -52,28 +49,11 @@ else:
 
 api = sly.Api(ignore_task_id=True, token=token)
 sly.logger.debug("Connected to Supervisely API: %s", api.server_address)
-clip_slug = "supervisely-ecosystem/deploy-clip-as-service"
 
 # region envvars
 generator_host = os.getenv("modal.state.generatorHost") or os.getenv("GENERATOR_HOST")
 qdrant_host = os.getenv("modal.state.qdrantHost") or os.getenv("QDRANT_HOST")
 clip_host = os.getenv("modal.state.clipHost", None) or os.getenv("CLIP_HOST", None)
-
-sly.logger.debug("CLIP host from environment: %s", clip_host)
-if clip_host is None or clip_host == "":
-    clip_host = get_app_host(api, clip_slug)
-
-try:
-    clip_host = int(clip_host)
-    task_info = api.task.get_info_by_id(clip_host)
-    try:
-        clip_host = api.server_address + task_info["settings"]["message"]["appInfo"]["baseUrl"]
-    except KeyError:
-        sly.logger.warning("Cannot get CLIP URL from task settings")
-        raise RuntimeError("Cannot connect to CLIP Service")
-except ValueError:
-    if clip_host[:4] not in ["http", "ws:/", "grpc"]:
-        clip_host = "grpc://" + clip_host
 
 update_interval = os.getenv("modal.state.updateInterval") or os.getenv("UPDATE_INTERVAL")
 update_interval = (
@@ -88,13 +68,11 @@ update_frame = (
 
 if not qdrant_host:
     raise ValueError("QDRANT_HOST is not set in the environment variables")
-if not clip_host:
-    raise ValueError("CLIP_HOST is not set in the environment variables")
+
 if not generator_host:
     raise ValueError("GENERATOR_HOST is not set in the environment variables")
 
 sly.logger.info("Qdrant host: %s", qdrant_host)
-sly.logger.info("CLIP host: %s", clip_host)
 sly.logger.info("Embeddings Generator host: %s", generator_host)
 
 # region constants

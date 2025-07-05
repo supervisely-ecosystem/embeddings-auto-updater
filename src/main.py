@@ -5,7 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi.responses import JSONResponse
 
 import src.globals as g
-from src.cas import client as clip_client
+from src.cas import is_flow_ready
 from src.functions import (
     auto_update_all_embeddings,
     check_in_progress_projects,
@@ -83,7 +83,7 @@ async def health_check():
 
         # Check CLIP service availability
         try:
-            if await clip_client.client._async_client.is_flow_ready():
+            if await is_flow_ready():
                 checks["clip"] = "healthy"
             else:
                 checks["clip"] = "unhealthy: CLIP service is not ready"
