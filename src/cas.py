@@ -251,7 +251,9 @@ async def _ensure_client_ready():
 async def get_vectors(queries: List[str]) -> List[List[float]]:
     global client
 
-    await _ensure_client_ready()
+    # Light check
+    if client is None:
+        await _ensure_client_ready()
 
     if client is None:
         raise RuntimeError("CLIP client is not available")
@@ -259,6 +261,18 @@ async def get_vectors(queries: List[str]) -> List[List[float]]:
     try:
         return await client.get_vectors(queries)
     except Exception as e:
+        # Try to reinitialize the client
+        sly.logger.warning(
+            "Error during get_vectors, attempting to reinitialize client: %s", str(e)
+        )
+        try:
+            await _ensure_client_ready()
+            if client is not None:
+                return await client.get_vectors(queries)
+        except Exception as reinit_e:
+            sly.logger.error("Failed to reinitialize client: %s", str(reinit_e))
+
+        # If reinitialization fails - raise the original error
         error_msg = f"Failed to get vectors from CLIP service: {str(e)}"
         sly.logger.error(error_msg, exc_info=True)
         raise RuntimeError(error_msg) from e
@@ -274,17 +288,4 @@ async def is_flow_ready():
         sly.logger.warning("Failed to ensure CLIP client ready in health check: %s", str(e))
         return False
 
-    if client is None:
-        return False
-
-    try:
-        if isinstance(client, CasUrlClient):
-            return await client.client._async_client.is_flow_ready()
-        else:
-            # For CasTaskClient, assume it's ready if initialization succeeded
-            return True
-    except Exception as e:
-        sly.logger.warning("CLIP flow readiness check failed in health check: %s", str(e))
-        # Invalidate client when readiness check fails
-        client = None
-        return False
+    return client is not None

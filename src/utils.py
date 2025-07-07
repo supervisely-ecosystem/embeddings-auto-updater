@@ -899,22 +899,36 @@ def get_project_inprogress_status(endpoint: str, id: int) -> dict:
 
 @to_thread
 @timeit
-def check_generator_is_ready(endpoint: str) -> bool:
+def check_generator_is_ready(endpoint: str, timeout: int = 10) -> bool:
     """Check if the generator service is ready by sending a request to the service endpoint.
 
     :param endpoint: Endpoint URL of the generator service.
     :type endpoint: str
+    :param timeout: Timeout for the request in seconds. Default is 10 seconds.
+    :type timeout: int
     :return: True if the generator service is ready, False otherwise.
     :rtype: bool
     """
     try:
-        response = httpx.get(f"{endpoint.rstrip('/')}/is_ready")
+        response = httpx.get(
+            f"{endpoint.rstrip('/')}/is_ready", timeout=timeout, follow_redirects=True
+        )
+        response.raise_for_status()
         status = response.json().get("status", "")
         sly.logger.debug("Received response from Generator service: %s", status)
         if status == "ready":
             sly.logger.debug("Generator service is ready.")
             return True
+    except httpx.ConnectError as e:
+        sly.logger.warning("Cannot connect to generator service at %s: %s", endpoint, e)
+    except httpx.TimeoutException as e:
+        sly.logger.warning("Timeout connecting to generator service at %s: %s", endpoint, e)
+    except httpx.HTTPStatusError as e:
+        sly.logger.warning("HTTP error from generator service: %s", e)
     except Exception as e:
-        sly.logger.error("Error checking generator service readiness: %s", e, exc_info=True)
-    sly.logger.debug("Generator service is not ready or an error occurred.")
+        sly.logger.error(
+            "Unexpected error checking generator service readiness: %s", e, exc_info=True
+        )
+
+    sly.logger.debug("Generator service is not ready or unreachable.")
     return False
