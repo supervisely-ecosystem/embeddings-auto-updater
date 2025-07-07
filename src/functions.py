@@ -129,7 +129,7 @@ async def update_embeddings(
     project_info: Optional[sly.ProjectInfo] = None,
     skip_in_progress_check: bool = False,
 ):
-    msg_prefix = f"[Project ID: {project_id}]"
+    msg_prefix = f"[Project: {project_id}]"
 
     if project_info is None:
         project_info = await get_project_info(api, project_id)

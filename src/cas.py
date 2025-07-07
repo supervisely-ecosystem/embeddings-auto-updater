@@ -162,19 +162,23 @@ def _init_client() -> Union[CasUrlClient, CasClient]:
     try:
         # Try to parse as task ID
         task_id = int(processed_clip_host)
-        sly.logger.info("CLIP host appears to be a task ID: %s, fetching task info...", task_id)
+        sly.logger.debug("CLIP host appears to be a task ID: %s, fetching task info...", task_id)
         task_info = g.api.task.get_info_by_id(task_id)
 
         try:
             processed_clip_host = (
                 g.api.server_address + task_info["settings"]["message"]["appInfo"]["baseUrl"]
             )
-            sly.logger.info("Resolved CLIP URL from task settings: %s", processed_clip_host)
+            sly.logger.debug("Resolved CLIP URL from task settings: %s", processed_clip_host)
         except KeyError:
             sly.logger.warning("Cannot get CLIP URL from task settings")
             raise RuntimeError("Cannot connect to CLIP Service")
 
-        return CasTaskClient(g.api, task_id)
+        # Use the resolved URL to create CasUrlClient instead of CasTaskClient
+        sly.logger.info(
+            "Resolved CLIP host from Task ID and using it as URL: %s", processed_clip_host
+        )
+        return CasUrlClient(processed_clip_host)
 
     except ValueError:
         # Not a task ID, treat as URL
@@ -204,19 +208,19 @@ async def _ensure_client_ready():
     if isinstance(client, CasUrlClient):
         try:
             # Test if client is ready to handle requests
-            sly.logger.info("Ensuring CLIP client is ready for requests...")
+            sly.logger.debug("Ensuring CLIP client is ready for requests...")
             result = await client.client._async_client.is_flow_ready()
             if not result:
                 sly.logger.warning("CLIP client flow is not ready, invalidating client")
                 # IMPORTANT: Set client to None immediately when it's not working
                 client = None
             else:
-                sly.logger.info("CLIP client is ready for requests")
+                sly.logger.debug("CLIP client is ready for requests")
         except Exception as e:
             sly.logger.warning("CLIP client flow is not ready, invalidating client: %s", str(e))
             # IMPORTANT: Set client to None immediately when it's not working
             client = None
-            sly.logger.info("CLIP client invalidated due to flow not ready")
+            sly.logger.debug("CLIP client invalidated due to flow not ready")
 
             # Try to reinitialize, but don't fail if it doesn't work
             try:
@@ -232,7 +236,7 @@ async def _ensure_client_ready():
                         # IMPORTANT: Set client to None immediately when it's not working
                         client = None
                     else:
-                        sly.logger.info("CLIP client is ready for requests")
+                        sly.logger.debug("CLIP client is ready for requests")
 
             except Exception as init_e:
                 sly.logger.warning(
