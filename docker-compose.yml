@@ -1,27 +1,35 @@
 services:
-  app:
+  embeddings-auto-updater:
     image: supervisely/embeddings-auto-updater:${VERSION}
     build:
       context: .
       dockerfile: ./docker/Dockerfile
+    deploy:
+      resources:
+        limits:
+          memory: 4G
     environment:
       ENV: "production" # production, development, etc.
       LOG_LEVEL: "${LOG_LEVEL}"
       SERVER_ADDRESS: "${SERVER_ADDRESS}" # one of the public or internal addresses of the Supervisely server must be provided
       SUPERVISELY_API_SERVER_ADDRESS: "${SUPERVISELY_API_SERVER_ADDRESS}" # one of the public or internal addresses of the Supervisely server must be provided
+      SUPERVISELY_API_ACCESS_TOKEN: "${SUPERVISELY_API_ACCESS_TOKEN}" # access token for Supervisely API
       API_TOKEN: "${API_TOKEN}" # you could set token for both publick and internal addresses, in case of internal address it will skip retrieving token from the server
       QDRANT_HOST: "${QDRANT_HOST}"
       CLIP_HOST: "${CLIP_HOST}" # CLIP application service, dont pass anything to search any available app instance automatically
       GENERATOR_HOST: "${GENERATOR_HOST}" # embeddings generator service, must be provided
       UPDATE_INTERVAL: ${UPDATE_INTERVAL} # minutes, default is 10 minutes
       UPDATE_FRAME: ${UPDATE_FRAME} # hours, default is 12 hours
+    labels:
+      proxy.app: embeddings-auto-updater
+      supervisely.logs.app: embeddings-auto-updater-test
     volumes:
       - ./src:/app/src:ro
       - ./project_embeddings_state:/app/state
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
-      interval: 15m
-      timeout: 20s
-      retries: 3
-      start_period: 2m
+    logging:
+      driver: local
+      options:
+        compress: "false"
+    ports:
+      - 30303:80

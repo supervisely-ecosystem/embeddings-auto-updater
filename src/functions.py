@@ -64,11 +64,11 @@ async def process_images(
     :rtype: Tuple[List[sly.ImageInfo], List[List[float]]]
     """
 
-    msg_prefix = f"[Project ID: {project_id}]"
+    msg_prefix = f"[Project: {project_id}]"
     vectors = []
 
     if len(to_create) == 0 and len(to_delete) == 0:
-        logger.debug(f"{msg_prefix} Embeddings are up-to-date.")
+        logger.debug(f"{msg_prefix} Nothing to update.")
         return to_create, vectors
 
     to_create = await create_lite_image_infos(
@@ -167,7 +167,7 @@ async def update_embeddings(
             )
 
         if len(images_to_create) == 0 and len(images_to_delete) == 0:
-            logger.debug(f"{msg_prefix} Embeddings are up-to-date.")
+            logger.debug(f"{msg_prefix} Nothing to update.")
             await set_embeddings_in_progress(api, project_id, False)
             return
 
@@ -191,7 +191,7 @@ async def auto_update_embeddings(
     """
     Update embeddings for the specified project if needed.
     """
-    msg_prefix = f"[Project ID: {project_id}]"
+    msg_prefix = f"[Project: {project_id}]"
 
     if project_info is None:
         project_info = await get_project_info(api, project_id)
@@ -203,7 +203,7 @@ async def auto_update_embeddings(
     team_info: sly.TeamInfo = await get_team_info(api, project_info.team_id)
     if team_info.usage is not None and team_info.usage.plan == "free":
         logger.info(
-            f"{msg_prefix} Embeddings update is not available on free plan.",
+            f"{msg_prefix} Embeddings update is not available on 'free' plan.",
             extra={
                 "project_id": project_id,
                 "project_name": project_info.name,
@@ -213,7 +213,7 @@ async def auto_update_embeddings(
         )
         api.project.disable_embeddings(project_id)
         logger.info(
-            f"{msg_prefix} Embeddings are disabled for project due to free plan.",
+            f"{msg_prefix} AI Search are disabled due to plan limitations.",
             project_info.name,
             project_id,
         )
@@ -241,17 +241,24 @@ async def auto_update_embeddings(
 @timeit
 async def auto_update_all_embeddings():
     """Update embeddings for all available projects"""
-    logger.info("Auto update all embeddings task started.")
+    logger.info("[All Projects] Auto update task started.")
 
-    project_infos: List[sly.ProjectInfo] = await get_all_projects(g.api)
-    # to randomize the order of projects for processing in several app instances
-    random.shuffle(project_infos)
-    for project_info in project_infos:
-        # do not pass info in the following function, it will be fetched inside
-        # it needs to work with the latest project info state
-        await auto_update_embeddings(g.api, project_info.id)
-    await AutoRestartInfo.clear_autorestart_params()
-    logger.info("Auto update all embeddings task finished.")
+    try:
+        project_infos: List[sly.ProjectInfo] = await get_all_projects(g.api)
+        random.shuffle(project_infos)
+        for project_info in project_infos:
+            try:
+                await auto_update_embeddings(g.api, project_info.id)
+            except Exception as e:
+                logger.error(
+                    f"[Project: {project_info.id}] Error updating embeddings : {e}",
+                    exc_info=True,
+                )
+        await AutoRestartInfo.clear_autorestart_params()
+    except Exception as e:
+        logger.error(f"Error in auto_update_all_embeddings: {e}", exc_info=True)
+
+    logger.info("[All Projects] Auto update task finished.")
 
 
 @timeit
@@ -271,7 +278,7 @@ async def check_in_progress_projects():
     project_infos: List[sly.ProjectInfo] = await get_all_projects(g.api, filters=filters)
     for project_info in project_infos:
         should_clear_in_progress = False
-        msg_prefix = f"[Project ID: {project_info.id}]"
+        msg_prefix = f"[Project: {project_info.id}]"
 
         if project_info.id == g.current_task:
             logger.debug(f"{msg_prefix}] Is in progress now with auto update task. Skipping...")
@@ -311,7 +318,7 @@ async def continue_project_processing(project_id: int):
     :param project_id: Project ID to check.
     :return: True if the project processing should continue, False otherwise.
     """
-    msg_prefix = f"[Project ID: {project_id}]"
+    msg_prefix = f"[Project: {project_id}]"
 
     info = await get_project_info(g.api, project_id)
     if info is None:

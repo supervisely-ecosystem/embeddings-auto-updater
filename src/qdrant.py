@@ -66,7 +66,7 @@ async def delete_collection_items(
     :rtype: Dict[str, Any]
     """
 
-    msg_prefix = f"[Project ID: {collection_name}]"
+    msg_prefix = f"[Project: {collection_name}]"
 
     ids = [info.id for info in image_infos]
 
