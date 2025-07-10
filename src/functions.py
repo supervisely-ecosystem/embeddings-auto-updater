@@ -1,7 +1,4 @@
-import asyncio
 import random
-import threading
-import time
 from typing import List, Optional, Tuple
 
 import supervisely as sly
@@ -26,7 +23,6 @@ from src.utils import (
     get_team_info,
     get_update_flag,
     image_get_list_async,
-    is_task_running,
     parse_timestamp,
     set_embeddings_in_progress,
     set_image_embeddings_updated_at,
@@ -167,7 +163,7 @@ async def update_embeddings(
             )
 
         if len(images_to_create) == 0 and len(images_to_delete) == 0:
-            logger.debug(f"{msg_prefix} Nothing to update.")
+            logger.info(f"{msg_prefix} Nothing to update.")
             await set_embeddings_in_progress(api, project_id, False)
             return
 
@@ -231,7 +227,7 @@ async def auto_update_embeddings(
         "embeddings_updated_at": project_info.embeddings_updated_at,
     }
     if not project_info.embeddings_enabled:
-        logger.info(f"{msg_prefix} Embeddings are not activated. Skipping.", extra=log_extra)
+        logger.info(f"{msg_prefix} AI Search are not activated. Skipping.", extra=log_extra)
         return
     logger.info(f"{msg_prefix} Auto update embeddings started.", extra=log_extra)
     await update_embeddings(api, project_id, force=False, project_info=project_info)
@@ -274,7 +270,7 @@ async def check_in_progress_projects():
         }
     ]
 
-    logger.info("Check in progress projects task started.")
+    logger.info("[All Projects] Check in progress task started.")
     project_infos: List[sly.ProjectInfo] = await get_all_projects(g.api, filters=filters)
     for project_info in project_infos:
         should_clear_in_progress = False
@@ -308,7 +304,7 @@ async def check_in_progress_projects():
             await clear_update_flag(g.api, project_info.id)
             await set_embeddings_in_progress(g.api, project_info.id, False)
 
-    logger.info("Check in progress projects task finished.")
+    logger.info("[All Projects] Check in progress task finished.")
 
 
 @timeit
@@ -326,13 +322,9 @@ async def continue_project_processing(project_id: int):
 
     await clear_update_flag(g.api, project_id)
     await set_embeddings_in_progress(g.api, project_id, False)
-    logger.info(
-        f"{msg_prefix} Continue processing after App restart.",
-    ),
+    logger.info(f"{msg_prefix} Continue updating embeddings after App restart.")
     await update_embeddings(g.api, project_id, project_info=info, skip_in_progress_check=True)
-    logger.info(
-        f"{msg_prefix} Update embeddings after App restart finished.",
-    )
+    logger.info(f"{msg_prefix} Update embeddings finished.")
 
 
 async def safe_check_autorestart():

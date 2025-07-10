@@ -51,15 +51,15 @@ api = sly.Api(ignore_task_id=True, token=token)
 sly.logger.debug("Connected to Supervisely API: %s", api.server_address)
 
 # region envvars
-generator_host = os.getenv("modal.state.generatorHost") or os.getenv("GENERATOR_HOST")
-qdrant_host = os.getenv("modal.state.qdrantHost") or os.getenv("QDRANT_HOST")
-clip_host = os.getenv("modal.state.clipHost", None) or os.getenv("CLIP_HOST", None)
+generator_host = os.getenv("GENERATOR_HOST")
+qdrant_host = os.getenv("QDRANT_HOST")
+clip_host = os.getenv("CLIP_HOST", None)
 
-update_interval = os.getenv("modal.state.updateInterval") or os.getenv("UPDATE_INTERVAL")
+update_interval = os.getenv("UPDATE_INTERVAL")
 update_interval = (
     int(update_interval) if update_interval and update_interval != "" else 10
 )  # default value in minutes
-update_frame = os.getenv("modal.state.updateFrame") or os.getenv("UPDATE_FRAME")
+update_frame = os.getenv("UPDATE_FRAME")
 update_frame = (
     int(update_frame) if update_frame and update_frame != "" else 12
 )  # default value in hours

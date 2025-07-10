@@ -1,7 +1,6 @@
 import json
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
 from supervisely import logger
@@ -60,7 +59,7 @@ class AutoRestartInfo:
         """Set autorestart params to local file"""
         try:
             deploy_params = {PROJECT_KEY: project_id}
-            logger.debug("Setting autorestart params to file...", extra=deploy_params)
+            logger.debug("Setting autorestart params...", extra=deploy_params)
 
             # Ensure directory exists
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -69,23 +68,23 @@ class AutoRestartInfo:
             with open(file_path, "w") as f:
                 json.dump({PROJECT_KEY: project_id}, f, indent=2)
 
-            logger.info("Autorestart params set successfully to file.")
+            logger.debug("Autorestart params set successfully.")
         except Exception as e:
-            logger.error(f"Failed to set autorestart params to file: {e}", exc_info=True)
+            logger.error(f"Failed to set autorestart params: {e}", exc_info=True)
 
     @staticmethod
     @to_thread
     def clear_autorestart_params(file_path: str = FILE_PATH):
         """Clear autorestart params from local file"""
         try:
-            logger.debug("Clearing autorestart params from file...")
+            logger.debug("Clearing autorestart params...")
 
             if os.path.exists(file_path):
                 with open(file_path, "w") as f:
                     json.dump({}, f, indent=2)
-                logger.info("Autorestart params cleared successfully from file.")
+                logger.debug("Autorestart params cleared successfully.")
             else:
                 logger.debug("Autorestart file does not exist, nothing to clear.")
 
         except Exception as e:
-            logger.error(f"Failed to clear autorestart params from file: {e}", exc_info=True)
+            logger.error(f"Failed to clear autorestart params: {e}", exc_info=True)

@@ -246,7 +246,6 @@ async def _ensure_client_ready():
                 client = None
 
 
-@timeit
 async def get_vectors(queries: List[str]) -> List[List[float]]:
     global client
 
