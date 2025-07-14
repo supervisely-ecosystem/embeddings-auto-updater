@@ -1,13 +1,14 @@
+import mimetypes
 import os
 import time
 import warnings
-from typing import List, Optional, Union
+from typing import Generator, List, Optional, Union
 from urllib.parse import urlparse
 
 import numpy as np
 import supervisely as sly
 from clip_client import Client
-from docarray.array.document import DocumentArray
+from docarray import Document, DocumentArray
 from supervisely.sly_logger import logger
 
 import src.globals as g
@@ -68,6 +69,47 @@ class SlyCasClient(Client):
             raise ValueError(f"{server} is not a valid scheme")
 
         self._authorization = credential.get("Authorization", os.environ.get("CLIP_AUTH_TOKEN"))
+
+    def _iter_doc(
+        self, content, results: Optional["DocumentArray"] = None
+    ) -> Generator["Document", None, None]:
+        """Differs from the base class method by handling Supervisely remote URLs."""
+
+        for c in content:
+            if isinstance(c, str):
+                _mime = mimetypes.guess_type(c)[0]
+                # Check if URL contains image-related paths or parameters
+                is_image_url = _mime and _mime.startswith("image") or "/remote/" in c
+
+                if is_image_url:
+                    logger.debug("[Clip Client] Processing string content as image URL")
+                    d = Document(
+                        uri=c,
+                    ).load_uri_to_blob()
+                else:
+                    logger.debug("[Clip Client] Processing string content as text")
+                    d = Document(text=c)
+            elif isinstance(c, Document):
+                if c.content_type in ("text", "blob"):
+                    logger.debug(
+                        "[Clip Client] Processing Document content of type: %s", c.content_type
+                    )
+                    d = c
+                elif not c.blob and c.uri:
+                    logger.debug("[Clip Client] Processing Document content as URI")
+                    c.load_uri_to_blob()
+                    d = c
+                elif c.tensor is not None:
+                    logger.debug("[Clip Client] Processing Document content as tensor")
+                    d = c
+                else:
+                    raise TypeError(f"unsupported input type {c!r} {c.content_type}")
+            else:
+                raise TypeError(f"unsupported input type {c!r}")
+
+            if results is not None:
+                results.append(d)
+            yield d
 
     @staticmethod
     def _gather_result(response, results: "DocumentArray", attribute: Optional[str] = None):
