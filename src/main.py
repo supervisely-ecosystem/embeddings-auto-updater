@@ -49,7 +49,7 @@ try:
         run_safe,
         args=[check_in_progress_projects],
         trigger="interval",
-        hours=g.CHECK_INPROGRESS_INTERVAL,  # Check every 4 hours by default
+        minutes=g.CHECK_INPROGRESS_INTERVAL,  # Check every 4 hours by default
         max_instances=1,  # Prevent overlapping job instances
     )
 

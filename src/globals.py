@@ -61,7 +61,7 @@ update_interval = (
 )  # default value in minutes
 update_frame = os.getenv("UPDATE_FRAME")
 update_frame = (
-    int(update_frame) if update_frame and update_frame != "" else 12
+    float(update_frame) if update_frame and update_frame != "" else 12
 )  # default value in hours
 
 # endregion
@@ -78,7 +78,7 @@ sly.logger.info("Embeddings Generator host: %s", generator_host)
 # region constants
 IMAGE_SIZE_FOR_CLIP = 224
 UPDATE_EMBEDDINGS_INTERVAL = update_interval  # minutes, default is 10
-CHECK_INPROGRESS_INTERVAL = update_frame  # hours, default is 12
+CHECK_INPROGRESS_INTERVAL = int(update_frame * 60)  # minutes, default is 12 hours
 CHECK_INPROGRESS_STATUS_ENDPOINT = generator_host.rstrip("/") + "/check_background_task_status"
 # endregion
 

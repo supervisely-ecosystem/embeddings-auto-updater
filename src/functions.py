@@ -176,8 +176,9 @@ async def update_embeddings(
             exc_info=True,
             extra={"project_id": project_id},
         )
-    g.current_task = None
-    await set_embeddings_in_progress(api, project_id, False)
+    finally:
+        g.current_task = None
+        await set_embeddings_in_progress(api, project_id, False)
 
 
 @timeit
@@ -277,7 +278,7 @@ async def check_in_progress_projects():
         msg_prefix = f"[Project: {project_info.id}]"
 
         if project_info.id == g.current_task:
-            logger.debug(f"{msg_prefix}] Is in progress now with auto update task. Skipping...")
+            logger.debug(f"{msg_prefix} Is in progress now with auto update task. Skipping...")
             continue
 
         info = await get_update_flag(g.api, project_info.id)
@@ -293,12 +294,17 @@ async def check_in_progress_projects():
                 response = await get_project_inprogress_status(
                     g.CHECK_INPROGRESS_STATUS_ENDPOINT, project_info.id
                 )
-                if response.get(ResponseFields.STATUS) is not ResponseStatus.IN_PROGRESS:
-                    logger.warning(
-                        f"{msg_prefix} Task {info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID]} is not running, "
-                        "clearing in progress flag."
+                cur_status = response.get(ResponseFields.STATUS)
+                if cur_status != ResponseStatus.IN_PROGRESS:
+                    logger.info(
+                        f"{msg_prefix} Embeddings creation task status: {cur_status}."
+                        "Clearing in progress flag."
                     )
                     should_clear_in_progress = True
+                else:
+                    logger.debug(
+                        f"{msg_prefix} Embeddings creation task status: {cur_status}. "
+                    )
 
         if should_clear_in_progress:
             await clear_update_flag(g.api, project_info.id)

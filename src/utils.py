@@ -124,7 +124,6 @@ class CustomDataFields:
     """Fields of the custom data."""
 
     EMBEDDINGS_UPDATE_STARTED_AT = "embeddings_update_started_at"
-    EMBEDDINGS_UPDATE_TASK_ID = "embeddings_update_task_id"
 
 
 @dataclass
