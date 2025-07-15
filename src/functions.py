@@ -1,7 +1,4 @@
-import asyncio
 import random
-import threading
-import time
 from typing import List, Optional, Tuple
 
 import supervisely as sly
@@ -10,20 +7,22 @@ from supervisely.sly_logger import logger
 import src.cas as cas
 import src.globals as g
 import src.qdrant as qdrant
-from src.autorestart import AutoRestartInfo
+from src.autorestart import PROJECT_KEY, AutoRestartInfo
 from src.utils import (
     ApiField,
     CustomDataFields,
+    ResponseFields,
+    ResponseStatus,
     clear_update_flag,
     create_lite_image_infos,
     datetime,
     fix_vectors,
     get_all_projects,
     get_project_info,
+    get_project_inprogress_status,
     get_team_info,
     get_update_flag,
     image_get_list_async,
-    is_task_running,
     parse_timestamp,
     set_embeddings_in_progress,
     set_image_embeddings_updated_at,
@@ -61,15 +60,15 @@ async def process_images(
     :rtype: Tuple[List[sly.ImageInfo], List[List[float]]]
     """
 
-    msg_prefix = f"[Project ID: {project_id}]"
+    msg_prefix = f"[Project: {project_id}]"
     vectors = []
 
     if len(to_create) == 0 and len(to_delete) == 0:
-        logger.debug(f"{msg_prefix} Embeddings are up-to-date.")
+        logger.debug(f"{msg_prefix} Nothing to update.")
         return to_create, vectors
 
     to_create = await create_lite_image_infos(
-        cas_size=g.IMAGE_SIZE_FOR_CAS,
+        cas_size=g.IMAGE_SIZE_FOR_CLIP,
         image_infos=to_create,
     )
 
@@ -124,13 +123,14 @@ async def update_embeddings(
     project_id: int,
     force: bool = False,
     project_info: Optional[sly.ProjectInfo] = None,
+    skip_in_progress_check: bool = False,
 ):
-    msg_prefix = f"[Project ID: {project_id}]"
+    msg_prefix = f"[Project: {project_id}]"
 
     if project_info is None:
         project_info = await get_project_info(api, project_id)
 
-    if project_info.embeddings_in_progress is True:
+    if project_info.embeddings_in_progress is True and not skip_in_progress_check:
         logger.info(f"{msg_prefix} Embeddings update is already in progress. Skipping.")
         return
     # if project_info.embeddings_updated_at is not None and parse_timestamp(
@@ -139,7 +139,8 @@ async def update_embeddings(
     #     logger.info(f"{msg_prefix} Is not updated since last embeddings update. Skipping.")
     #     return
     await set_embeddings_in_progress(api, project_id, True)
-    await AutoRestartInfo.set_autorestart_params(api, project_id)
+    g.current_task = project_id
+    await AutoRestartInfo.set_autorestart_params(project_id)
     try:
         if force:
             logger.info(f"{msg_prefix} Force enabled, recreating embeddings for all images.")
@@ -162,7 +163,7 @@ async def update_embeddings(
             )
 
         if len(images_to_create) == 0 and len(images_to_delete) == 0:
-            logger.debug(f"{msg_prefix} Embeddings are up-to-date.")
+            logger.info(f"{msg_prefix} Nothing to update.")
             await set_embeddings_in_progress(api, project_id, False)
             return
 
@@ -175,7 +176,9 @@ async def update_embeddings(
             exc_info=True,
             extra={"project_id": project_id},
         )
-    await set_embeddings_in_progress(api, project_id, False)
+    finally:
+        g.current_task = None
+        await set_embeddings_in_progress(api, project_id, False)
 
 
 @timeit
@@ -185,7 +188,7 @@ async def auto_update_embeddings(
     """
     Update embeddings for the specified project if needed.
     """
-    msg_prefix = f"[Project ID: {project_id}]"
+    msg_prefix = f"[Project: {project_id}]"
 
     if project_info is None:
         project_info = await get_project_info(api, project_id)
@@ -197,7 +200,7 @@ async def auto_update_embeddings(
     team_info: sly.TeamInfo = await get_team_info(api, project_info.team_id)
     if team_info.usage is not None and team_info.usage.plan == "free":
         logger.info(
-            f"{msg_prefix} Embeddings update is not available on free plan.",
+            f"{msg_prefix} Embeddings update is not available on 'free' plan.",
             extra={
                 "project_id": project_id,
                 "project_name": project_info.name,
@@ -207,7 +210,7 @@ async def auto_update_embeddings(
         )
         api.project.disable_embeddings(project_id)
         logger.info(
-            f"{msg_prefix} Embeddings are disabled for project due to free plan.",
+            f"{msg_prefix} AI Search are disabled due to plan limitations.",
             project_info.name,
             project_id,
         )
@@ -225,7 +228,7 @@ async def auto_update_embeddings(
         "embeddings_updated_at": project_info.embeddings_updated_at,
     }
     if not project_info.embeddings_enabled:
-        logger.info(f"{msg_prefix} Embeddings are not activated. Skipping.", extra=log_extra)
+        logger.info(f"{msg_prefix} AI Search is not activated. Skipping.", extra=log_extra)
         return
     logger.info(f"{msg_prefix} Auto update embeddings started.", extra=log_extra)
     await update_embeddings(api, project_id, force=False, project_info=project_info)
@@ -235,16 +238,24 @@ async def auto_update_embeddings(
 @timeit
 async def auto_update_all_embeddings():
     """Update embeddings for all available projects"""
-    logger.info("Auto update all embeddings task started.")
+    logger.info("[All Projects] Auto update task started.")
 
-    project_infos: List[sly.ProjectInfo] = await get_all_projects(g.api)
-    random.shuffle(project_infos)  # to
-    for project_info in project_infos:
-        # do not pass info in the following function, it will be fetched inside
-        # it needs to work with the latest project info state
-        await auto_update_embeddings(g.api, project_info.id)
-    await AutoRestartInfo.clear_autorestart_params(g.api)
-    logger.info("Auto update all embeddings task finished.")
+    try:
+        project_infos: List[sly.ProjectInfo] = await get_all_projects(g.api)
+        random.shuffle(project_infos)
+        for project_info in project_infos:
+            try:
+                await auto_update_embeddings(g.api, project_info.id)
+            except Exception as e:
+                logger.error(
+                    f"[Project: {project_info.id}] Error updating embeddings : {e}",
+                    exc_info=True,
+                )
+        await AutoRestartInfo.clear_autorestart_params()
+    except Exception as e:
+        logger.error(f"Error in auto_update_all_embeddings: {e}", exc_info=True)
+
+    logger.info("[All Projects] Auto update task finished.")
 
 
 @timeit
@@ -260,12 +271,15 @@ async def check_in_progress_projects():
         }
     ]
 
-    logger.info("Check in progress projects task started.")
+    logger.info("[All Projects] Check in progress task started.")
     project_infos: List[sly.ProjectInfo] = await get_all_projects(g.api, filters=filters)
     for project_info in project_infos:
+        should_clear_in_progress = False
+        msg_prefix = f"[Project: {project_info.id}]"
 
-        clear_in_progress = False
-        msg_prefix = f"[Project ID: {project_info.id}]"
+        if project_info.id == g.current_task:
+            logger.debug(f"{msg_prefix} Is in progress now with auto update task. Skipping...")
+            continue
 
         info = await get_update_flag(g.api, project_info.id)
         if info[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] is not None:
@@ -276,25 +290,27 @@ async def check_in_progress_projects():
                 f"{msg_prefix} Update started at {info[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT]}, "
                 f"hours difference: {hours_diff:.2f}"
             )
-            if (
-                hours_diff >= g.update_frame
-                and info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] is not None
-            ):
-                status = await is_task_running(
-                    g.api, int(info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID])
+            if hours_diff >= g.update_frame:
+                response = await get_project_inprogress_status(
+                    g.CHECK_INPROGRESS_STATUS_ENDPOINT, project_info.id
                 )
-                if status is False:
-                    logger.warning(
-                        f"{msg_prefix} Task {info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID]} is not running, "
-                        "clearing in progress flag."
+                cur_status = response.get(ResponseFields.STATUS)
+                if cur_status != ResponseStatus.IN_PROGRESS:
+                    logger.info(
+                        f"{msg_prefix} Embeddings creation task status: {cur_status}."
+                        "Clearing in progress flag."
                     )
-                    clear_in_progress = True
+                    should_clear_in_progress = True
+                else:
+                    logger.debug(
+                        f"{msg_prefix} Embeddings creation task status: {cur_status}. "
+                    )
 
-        if clear_in_progress:
+        if should_clear_in_progress:
             await clear_update_flag(g.api, project_info.id)
             await set_embeddings_in_progress(g.api, project_info.id, False)
 
-    logger.info("Check in progress projects task finished.")
+    logger.info("[All Projects] Check in progress task finished.")
 
 
 @timeit
@@ -304,7 +320,7 @@ async def continue_project_processing(project_id: int):
     :param project_id: Project ID to check.
     :return: True if the project processing should continue, False otherwise.
     """
-    msg_prefix = f"[Project ID: {project_id}]"
+    msg_prefix = f"[Project: {project_id}]"
 
     info = await get_project_info(g.api, project_id)
     if info is None:
@@ -312,13 +328,9 @@ async def continue_project_processing(project_id: int):
 
     await clear_update_flag(g.api, project_id)
     await set_embeddings_in_progress(g.api, project_id, False)
-    logger.info(
-        f"{msg_prefix} Continue processing after App restart.",
-    ),
-    await update_embeddings(g.api, project_id, project_info=info)
-    logger.info(
-        f"{msg_prefix} Update embeddings after App restart finished.",
-    )
+    logger.info(f"{msg_prefix} Continue updating embeddings after App restart.")
+    await update_embeddings(g.api, project_id, project_info=info, skip_in_progress_check=True)
+    logger.info(f"{msg_prefix} Update embeddings finished.")
 
 
 async def safe_check_autorestart():
@@ -327,10 +339,10 @@ async def safe_check_autorestart():
     It ensures that the autorestart check does not disrupt the normal operation of the application.
     """
     try:
-        autorestart = AutoRestartInfo.check_autorestart(g.api)
+        autorestart = AutoRestartInfo.check_autorestart()
         sly.logger.debug("Autorestart info checked")
         if autorestart is not None:
-            project_id = autorestart.deploy_params.get("project_id", None)
+            project_id = autorestart.deploy_params.get(PROJECT_KEY, None)
             if project_id is not None:
                 try:
                     sly.logger.info(

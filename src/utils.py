@@ -5,6 +5,7 @@ from functools import partial, wraps
 from time import perf_counter
 from typing import Callable, Dict, List, Optional, Union
 
+import httpx
 import supervisely as sly
 from supervisely._utils import batched, resize_image_url
 from supervisely.api.module_api import ApiField
@@ -123,7 +124,6 @@ class CustomDataFields:
     """Fields of the custom data."""
 
     EMBEDDINGS_UPDATE_STARTED_AT = "embeddings_update_started_at"
-    EMBEDDINGS_UPDATE_TASK_ID = "embeddings_update_task_id"
 
 
 @dataclass
@@ -373,7 +373,7 @@ async def create_lite_image_infos(
 ) -> List[ImageInfoLite]:
     """Returns lite version of image infos to cut off unnecessary data.
 
-    :param cas_size: Size of the image for CAS, it will be added to URL.
+    :param cas_size: Size of the image for CLIP, it will be added to URL.
     :type cas_size: int
     :param image_infos: List of image infos to get lite version from.
     :type image_infos: List[sly.ImageInfo]
@@ -508,7 +508,7 @@ async def image_get_list_async(
     project_id: int,
     dataset_id: int = None,
     image_ids: List[int] = None,
-    per_page: int = 500,
+    per_page: int = 1000,
     wo_embeddings: Optional[bool] = False,
     deleted_after: Optional[str] = None,
 ) -> List[sly.ImageInfo]:
@@ -528,7 +528,7 @@ async def image_get_list_async(
     :type dataset_id: int, optional
     :param image_ids: List of image IDs to get images from. If None, will get all images.
     :type image_ids: List[int], optional
-    :param per_page: Number of images to return per page. Default is 500.
+    :param per_page: Number of images to return per page. Default is 1000.
     :type per_page: int
     :param wo_embeddings: If True, will return only images without embeddings. Default is False.
     :type wo_embeddings: bool, optional
@@ -569,36 +569,48 @@ async def image_get_list_async(
             if ApiField.FILTER not in page_data:
                 page_data[ApiField.FILTER] = []
             page_data[ApiField.FILTER].extend(ids_filter)
+
         page_data[ApiField.PAGE] = 1
+        first_response = await api.post_async(method, page_data)
+        first_response_json = first_response.json()
 
-        async with semaphore:
-            response = await api.post_async(method, page_data)
-            response_json = response.json()
+        total_pages = first_response_json.get("pagesCount", 1)
+        batch_items = []
 
-            pages_count = response_json["pagesCount"]
+        entities = first_response_json.get("entities", [])
+        for item in entities:
+            image_info = api.image._convert_json_info(item)
+            batch_items.append(image_info)
 
-            batch_items = []
-            # Process first page
-            for item in response_json.get("entities", []):
-                image_info = api.image._convert_json_info(item)
-                batch_items.append(image_info)
+        if total_pages > 1:
 
-            # Get remaining pages if they exist
-            page_tasks = []
-            if pages_count > 1:
-                for page in range(2, pages_count + 1):
-                    page_data_copy = page_data.copy()
-                    page_data_copy[ApiField.PAGE] = page
-                    page_tasks.append(api.post_async(method, page_data_copy))
+            async def fetch_page(page_num):
+                page_data_copy = page_data.copy()
+                page_data_copy[ApiField.PAGE] = page_num
 
-                responses = await asyncio.gather(*page_tasks)
-                for resp in responses:
-                    resp_json = resp.json()
-                    for item in resp_json.get("entities", []):
+                async with semaphore:
+                    response = await api.post_async(method, page_data_copy)
+                    response_json = response.json()
+
+                    page_items = []
+                    entities = response_json.get("entities", [])
+                    for item in entities:
                         image_info = api.image._convert_json_info(item)
-                        batch_items.append(image_info)
+                        page_items.append(image_info)
 
-            return batch_items
+                    return page_items
+
+            # Create tasks for all remaining pages
+            tasks = []
+            for page_num in range(2, total_pages + 1):
+                tasks.append(asyncio.create_task(fetch_page(page_num)))
+
+            page_results = await asyncio.gather(*tasks)
+
+            for page_items in page_results:
+                batch_items.extend(page_items)
+
+        return batch_items
 
     if image_ids is None:
         # If no image IDs specified, get all images
@@ -815,7 +827,6 @@ def set_update_flag(api: sly.Api, project_id: int):
     custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] = datetime.now(
         timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-    custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] = api.task_id
     api.project.update_custom_data(project_id, custom_data, silent=True)
 
 
@@ -825,15 +836,10 @@ def get_update_flag(api: sly.Api, project_id: int) -> Optional[dict]:
     custom_data = api.project.get_custom_data(project_id)
     info = {
         CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT: None,
-        CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID: None,
     }
     if CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT in custom_data:
         info[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] = custom_data[
             CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT
-        ]
-    if CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID in custom_data:
-        info[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] = custom_data[
-            CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID
         ]
     return info
 
@@ -841,23 +847,11 @@ def get_update_flag(api: sly.Api, project_id: int) -> Optional[dict]:
 @to_thread
 @timeit
 def clear_update_flag(api: sly.Api, project_id: int):
-    update = False
     custom_data = api.project.get_custom_data(project_id)
     if custom_data is None or custom_data == {}:
         return
-    if (
-        CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT in custom_data
-        and custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] is not None
-    ):
-        custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT] = None
-        update = True
-    if (
-        CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID in custom_data
-        and custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] is not None
-    ):
-        custom_data[CustomDataFields.EMBEDDINGS_UPDATE_TASK_ID] = None
-        update = True
-    if update:
+    if CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT in custom_data:
+        del custom_data[CustomDataFields.EMBEDDINGS_UPDATE_STARTED_AT]
         api.project.update_custom_data(project_id, custom_data, silent=True)
 
 
@@ -880,3 +874,72 @@ def is_task_running(api: sly.Api, task_id: int) -> Optional[bool]:
         sly.logger.error("Error checking task status: %s", e, exc_info=True)
         status = None
     return status
+
+
+def get_app_host(api: sly.Api, slug: str) -> str:
+    """Get the app host URL from the Supervisely API.
+
+    :param api: Instance of supervisely API.
+    :type api: sly.Api
+    :return: The app host URL.
+    :rtype: str
+    """
+    session_token = api.app.get_session_token(slug)
+    sly.logger.debug("Session token for CLIP slug %s: %s", slug, session_token)
+    host = api.server_address.rstrip("/") + "/net/" + session_token
+    sly.logger.debug("App host URL for CLIP: %s", host)
+    return host
+
+
+@to_thread
+@timeit
+def get_project_inprogress_status(endpoint: str, id: int) -> dict:
+    """Get the project in-progress status by ID by sending a request to the service endpoint.
+
+    :param endpoint: Endpoint URL of the service.
+    :type endpoint: str
+    :param id: ID of the project.
+    :type id: int
+    :return: Dictionary with project in-progress status.
+    :rtype: dict
+    """
+
+    response = httpx.post(endpoint, json={"task_id": id})
+    return response.json()
+
+
+@to_thread
+@timeit
+def check_generator_is_ready(endpoint: str, timeout: int = 10) -> bool:
+    """Check if the generator service is ready by sending a request to the service endpoint.
+
+    :param endpoint: Endpoint URL of the generator service.
+    :type endpoint: str
+    :param timeout: Timeout for the request in seconds. Default is 10 seconds.
+    :type timeout: int
+    :return: True if the generator service is ready, False otherwise.
+    :rtype: bool
+    """
+    try:
+        response = httpx.get(
+            f"{endpoint.rstrip('/')}/is_ready", timeout=timeout, follow_redirects=True
+        )
+        response.raise_for_status()
+        status = response.json().get("status", "")
+        sly.logger.debug("Received response from Generator service: %s", status)
+        if status == "ready":
+            sly.logger.debug("Generator service is ready.")
+            return True
+    except httpx.ConnectError as e:
+        sly.logger.warning("Cannot connect to generator service at %s: %s", endpoint, e)
+    except httpx.TimeoutException as e:
+        sly.logger.warning("Timeout connecting to generator service at %s: %s", endpoint, e)
+    except httpx.HTTPStatusError as e:
+        sly.logger.warning("HTTP error from generator service: %s", e)
+    except Exception as e:
+        sly.logger.error(
+            "Unexpected error checking generator service readiness: %s", e, exc_info=True
+        )
+
+    sly.logger.debug("Generator service is not ready or unreachable.")
+    return False

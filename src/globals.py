@@ -7,51 +7,83 @@ if sly.is_development():
     load_dotenv(os.path.expanduser("~/supervisely.env"))
     load_dotenv("local.env")
 
-api = sly.Api.from_env(ignore_task_id=True)
+internal_address = os.getenv("SUPERVISELY_API_SERVER_ADDRESS", None)
+sly.logger.debug("Internal Supervisely API server address: %s", internal_address)
+if internal_address == "":
+    internal_address = None
+    del os.environ["SUPERVISELY_API_SERVER_ADDRESS"]
+    sly.logger.debug("Removed empty SUPERVISELY_API_SERVER_ADDRESS from environment")
+
+api_token = os.getenv("API_TOKEN", None)
+sly.logger.debug("API token from environment: %s", api_token)
+if api_token == "":
+    api_token = None
+    del os.environ["API_TOKEN"]
+    sly.logger.debug("Removed empty API_TOKEN from environment")
+
+access_token = os.getenv("SUPERVISELY_API_ACCESS_TOKEN", None)
+sly.logger.debug("Access token from environment: %s", access_token)
+if access_token == "":
+    access_token = None
+
+if access_token is None and internal_address is not None and api_token is None:
+    message = (
+        f"You are trying to connect to the internal Supervisely API server: {internal_address}. "
+        "Access token or API token is required to connect to the internal Supervisely API server, "
+        "but it is not provided in the environment variables."
+    )
+    sly.logger.error(message)
+    raise RuntimeError(message)
+
+if internal_address is not None and api_token is None:
+    temp_api = sly.Api(ignore_task_id=True)
+    response = temp_api.post("instance.admin-info", data={"accessToken": access_token})
+    token = response.json()["apiToken"]
+    sly.logger.debug("Using Supervisely API token: %s", token)
+elif api_token is not None:
+    token = api_token
+    sly.logger.debug("Using Supervisely API token from environment")
+else:
+    token = None
+    sly.logger.debug("No internal Supervisely API server address found, using public API")
+
+api = sly.Api(ignore_task_id=True, token=token)
 sly.logger.debug("Connected to Supervisely API: %s", api.server_address)
-api.file.load_dotenv_from_teamfiles(override=True)
 
 # region envvars
-team_id = sly.env.team_id()
-workspace_id = sly.env.workspace_id()
-sly.logger.debug("Team ID: %s, Workspace ID: %s", team_id, workspace_id)
+generator_host = os.getenv("GENERATOR_HOST")
+qdrant_host = os.getenv("QDRANT_HOST")
+clip_host = os.getenv("CLIP_HOST", None)
 
-# The first option (modal.state) comes from the Modal window, the second one (QDRANT_HOST)
-# comes from the .env file.
-qdrant_host = os.getenv("modal.state.qdrantHost") or os.getenv("QDRANT_HOST")
-cas_host = os.getenv("modal.state.casHost") or os.getenv("CAS_HOST")
+update_interval = os.getenv("UPDATE_INTERVAL")
+update_interval = (
+    int(update_interval) if update_interval and update_interval != "" else 10
+)  # default value in minutes
+update_frame = os.getenv("UPDATE_FRAME")
+update_frame = (
+    float(update_frame) if update_frame and update_frame != "" else 12
+)  # default value in hours
 
-update_interval = int(os.getenv("modal.state.update_interval") or os.getenv("UPDATE_INTERVAL"))
-update_frame = int(os.getenv("modal.state.update_frame") or os.getenv("UPDATE_FRAME"))
-try:
-    cas_host = int(cas_host)
-    task_info = api.task.get_info_by_id(cas_host)
-    try:
-        cas_host = api.server_address + task_info["settings"]["message"]["appInfo"]["baseUrl"]
-    except KeyError:
-        sly.logger.warning("Cannot get CAS URL from task settings")
-        raise RuntimeError("Cannot connect to CLIP Service")
-except ValueError:
-    if cas_host[:4] not in ["http", "ws:/", "grpc"]:
-        cas_host = "grpc://" + cas_host
 # endregion
 
 if not qdrant_host:
     raise ValueError("QDRANT_HOST is not set in the environment variables")
-if not cas_host:
-    raise ValueError("CAS_HOST is not set in the environment variables")
+
+if not generator_host:
+    raise ValueError("GENERATOR_HOST is not set in the environment variables")
 
 sly.logger.info("Qdrant host: %s", qdrant_host)
-sly.logger.info("CAS host: %s", cas_host)
+sly.logger.info("Embeddings Generator host: %s", generator_host)
 
 # region constants
-IMAGE_SIZE_FOR_CAS = 224
+IMAGE_SIZE_FOR_CLIP = 224
 UPDATE_EMBEDDINGS_INTERVAL = update_interval  # minutes, default is 10
-CHECK_INPROGRESS_INTERVAL = 4  # hours, default is 4
+CHECK_INPROGRESS_INTERVAL = int(update_frame * 60)  # minutes, default is 12 hours
+CHECK_INPROGRESS_STATUS_ENDPOINT = generator_host.rstrip("/") + "/check_background_task_status"
 # endregion
 
-sly.logger.debug("Image size for CAS: %s", IMAGE_SIZE_FOR_CAS)
-sly.logger.debug("Update interval: %s", UPDATE_EMBEDDINGS_INTERVAL)
-sly.logger.debug("Update frame: %s", update_frame)
+sly.logger.debug("Image size for CLIP: %s", IMAGE_SIZE_FOR_CLIP)
+sly.logger.debug("Update interval in minutes: %s", UPDATE_EMBEDDINGS_INTERVAL)
+sly.logger.debug("Update frame in hours: %s", update_frame)
 
-background_tasks = {}
+current_task = None  # project_id which is currently processed creating embeddings

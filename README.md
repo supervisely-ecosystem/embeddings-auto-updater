@@ -1,70 +1,79 @@
 <div align="center" markdown>
-<img src="https://github.com/supervisely-ecosystem/embeddings-auto-updater/releases/download/v0.1.0/poster.jpg"/>
+<img src="https://github.com/supervisely-ecosystem/embeddings-auto-updater/releases/download/v0.1.0/poster.jpg" alt="Embeddings Auto-Updater Poster"/>
 
 # Embeddings Auto-Updater
 
 <p align="center">
-  <a href="#Overview">Overview</a> •
-  <a href="#How-to-Run">How to Run</a> •
-  <a href="#Configuration">Configuration</a> •
-  <a href="#Features">Features</a>
+  <a href="#overview">Overview</a> •
+  <a href="#deployment">Deployment</a> •
+  <a href="#monitoring">Monitoring</a>
 </p>
 
 [![](https://img.shields.io/badge/supervisely-ecosystem-brightgreen)](https://ecosystem.supervisely.com/apps/supervisely-ecosystem/embeddings-auto-updater)
 [![](https://img.shields.io/badge/slack-chat-green.svg?logo=slack)](https://supervisely.com/slack)
-![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/supervisely-ecosystem/embeddings-auto-updater)
-[![views](https://app.supervisely.com/img/badges/views/supervisely-ecosystem/embeddings-auto-updater.png)](https://supervisely.com)
-[![runs](https://app.supervisely.com/img/badges/runs/supervisely-ecosystem/embeddings-auto-updater.png)](https://supervisely.com)
 
 </div>
 
 # Overview
 
-🧩 This application is a part of the **AI Search** feature in Supervisely and is designed to enhance the capabilities of the **Embeddings Generator** app.
+🧩 **Embeddings Auto-Updater** is a **system-level microservice** designed to enhance the **AI Search** feature in Supervisely by automatically generating and updating embeddings for project images.
 
-**Embeddings Auto-Updater** is a microservice that automatically generates and updates embeddings for project images in Supervisely projects with AI Search enabled. This application ensures that your image embeddings are always up-to-date, enabling efficient similarity search and AI-powered image discovery.
+Key features:
 
-Application key points:
+-   **Instance-level service**: Runs as a system container for the entire Supervisely instance.
+-   **Automatic embeddings generation**: For all projects with AI Search enabled.
+-   **Scheduled updates**: Configurable intervals for embedding updates.
+-   **Integration with Qdrant**: Efficient vector database for embedding storage.
+-   **CLIP Service integration**: High-quality image embeddings.
+-   **Smart update logic**: Processes only new or modified images.
+-   **Zero-downtime operation**: Runs continuously in the background.
 
-- **Automatic embeddings generation** for projects with AI Search enabled
-- **Scheduled updates** with configurable intervals
-- **Integration with Qdrant** vector database for embedding storage
-- **CLIP Service integration** for high-quality image embeddings
-- **Smart update logic** - only processes new or modified images
+The service ensures synchronization between Supervisely and Qdrant by:
 
-The service continuously monitors projects with AI Search enabled and automatically:
-1. Generates embeddings for new images
-2. Updates embeddings for modified images  
-3. Removes embeddings for deleted images
-4. Maintains synchronization between Supervisely and Qdrant
+1. Generating embeddings for new images.
+2. Updating embeddings for modified images.
+3. Removing embeddings for deleted images.
 
 ## Architecture
 
-The application uses a scheduler-based architecture that periodically checks for projects requiring embedding updates:
+The application uses a scheduler-based architecture to periodically check for projects requiring embedding updates:
 
-- **Scheduler**: Uses AsyncIOScheduler to run updates at configurable intervals
-- **CLIP Service**: Generates high-quality image embeddings using CLIP models
-- **Qdrant Integration**: Stores and manages vector embeddings efficiently
-- **Smart Filtering**: Only processes images that need updates based on timestamps
+-   **Containerized Service**: Runs as a Docker container at the instance level.
+-   **Scheduler**: Uses `AsyncIOScheduler` for configurable update intervals.
+-   **CLIP Service**: Generates high-quality embeddings using CLIP models.
+-   **Qdrant Integration**: Efficiently stores and manages vector embeddings.
+-   **Smart Filtering**: Processes only images needing updates based on timestamps.
+-   **Multi-project Support**: Handles multiple projects concurrently.
 
-## How To Run
+## Deployment
 
-**Prerequisites:**
+### Prerequisites
 
-- Supervisely instance with admin access
-- Running CLIP as Service instance (task ID)
-- Qdrant vector database instance (URL)
+-   Supervisely instance with admin access.
+-   Docker environment for container deployment.
+-   Running CLIP as Service instance (task ID or service endpoint).
+-   Qdrant vector database instance (URL).
 
-When launching the service, configure these settings in the modal dialog:
+### Environment Variables
 
-1. **Qdrant DB**: Full URL including protocol (https/http) and port (e.g., `https://192.168.1.1:6333`).
-2. **CLIP Service**: Task ID for CLIP as Service session or its host including port (e.g., `1234` or `https://192.168.1.1:51000`).
-3. **Update Interval**: Set the interval in minutes for updating embeddings (1-1440 minutes, default: 10)
+Configure the service using the environment variables in `docker-compose.yml`.
 
-After configuration, click "Run" to deploy the service. The application will start in headless mode and will automatically start monitoring and updating embeddings for all projects with AI Search enabled.
+### Configuration
 
-![configuration](https://github.com/supervisely-ecosystem/embeddings-auto-updater/releases/download/v0.1.0/how_to_run.jpg)
+-   **Qdrant DB**: Full URL including protocol (https/http) and port (e.g., `https://192.168.1.1:6333`).
+-   **CLIP Service**: Task ID for CLIP as Service session or its host including port (e.g., `1234` or `https://192.168.1.1:51000`).
+-   **Update Interval**: Set the interval in minutes for updating embeddings (1-1440 minutes, default: 10).
+
+The service starts automatically on instance startup and continuously monitors all projects with AI Search enabled.
+
+## Monitoring
+
+The service provides robust logging and monitoring capabilities:
+
+-   **Health checks**: Built-in health check endpoint.
+-   **Detailed logging**: Configurable log levels for debugging and monitoring.
+-   **Error handling**: Robust error handling with retry mechanisms.
 
 ---
 
-For technical support and questions, please join our [Supervisely Ecosystem Slack community](https://supervisely.com/slack).
+For technical support and questions, join our [Supervisely Ecosystem Slack community](https://supervisely.com/slack).

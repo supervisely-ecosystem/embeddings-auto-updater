@@ -1,5 +1,5 @@
 pydantic==1.10.8
-supervisely==6.73.376
+supervisely==6.73.400
 clip-client==0.8.3
 qdrant-client==1.12.1
-apscheduler==3.11.0
+APScheduler==3.11.0

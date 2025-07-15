@@ -40,7 +40,7 @@ client = create_client_from_url(g.qdrant_host)
 try:
     sly.logger.info(f"Connecting to Qdrant at {g.qdrant_host}...")
     QdrantClient(g.qdrant_host).get_collections()
-    sly.logger.info(f"Connected to Qdrant at {g.qdrant_host}")
+    sly.logger.info(f"Connected to Qdrant successfully")
 except Exception as e:
     sly.logger.error(f"Failed to connect to Qdrant at {g.qdrant_host}: {e}")
 
@@ -66,16 +66,18 @@ async def delete_collection_items(
     :rtype: Dict[str, Any]
     """
 
-    msg_prefix = f"[Project ID: {collection_name}]"
+    msg_prefix = f"[Project: {collection_name}]"
 
     ids = [info.id for info in image_infos]
 
-    sly.logger.debug(f"{msg_prefix} Deleting items from collection...", extra={"ids": ids})
+    sly.logger.debug(
+        f"{msg_prefix} Deleting {len(ids)} items from collection...", extra={"ids": ids}
+    )
     try:
         await client.delete(collection_name, ids, wait=False)
     except UnexpectedResponse as e:
         sly.logger.debug(
-            f"{msg_prefix} Something went wrong, while deleting items from collection.",
+            f"{msg_prefix} Failed to delete items from collection.",
             exc_info=e,
             extra={"ids": ids},
         )
