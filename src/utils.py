@@ -896,8 +896,8 @@ def get_app_host(api: sly.Api, slug: str) -> str:
 def get_project_inprogress_status(endpoint: str, id: int) -> dict:
     """Get the project in-progress status by ID by sending a request to the service endpoint.
 
-    :param host: Host URL of the service.
-    :type host: str
+    :param endpoint: Endpoint URL of the service.
+    :type endpoint: str
     :param id: ID of the project.
     :type id: int
     :return: Dictionary with project in-progress status.
