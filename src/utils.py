@@ -569,36 +569,48 @@ async def image_get_list_async(
             if ApiField.FILTER not in page_data:
                 page_data[ApiField.FILTER] = []
             page_data[ApiField.FILTER].extend(ids_filter)
+
         page_data[ApiField.PAGE] = 1
+        first_response = await api.post_async(method, page_data)
+        first_response_json = first_response.json()
 
-        async with semaphore:
-            response = await api.post_async(method, page_data)
-            response_json = response.json()
+        total_pages = first_response_json.get("pagesCount", 1)
+        batch_items = []
 
-            pages_count = response_json["pagesCount"]
+        entities = first_response_json.get("entities", [])
+        for item in entities:
+            image_info = api.image._convert_json_info(item)
+            batch_items.append(image_info)
 
-            batch_items = []
-            # Process first page
-            for item in response_json.get("entities", []):
-                image_info = api.image._convert_json_info(item)
-                batch_items.append(image_info)
+        if total_pages > 1:
 
-            # Get remaining pages if they exist
-            page_tasks = []
-            if pages_count > 1:
-                for page in range(2, pages_count + 1):
-                    page_data_copy = page_data.copy()
-                    page_data_copy[ApiField.PAGE] = page
-                    page_tasks.append(api.post_async(method, page_data_copy))
+            async def fetch_page(page_num):
+                page_data_copy = page_data.copy()
+                page_data_copy[ApiField.PAGE] = page_num
 
-                responses = await asyncio.gather(*page_tasks)
-                for resp in responses:
-                    resp_json = resp.json()
-                    for item in resp_json.get("entities", []):
+                async with semaphore:
+                    response = await api.post_async(method, page_data_copy)
+                    response_json = response.json()
+
+                    page_items = []
+                    entities = response_json.get("entities", [])
+                    for item in entities:
                         image_info = api.image._convert_json_info(item)
-                        batch_items.append(image_info)
+                        page_items.append(image_info)
 
-            return batch_items
+                    return page_items
+
+            # Create tasks for all remaining pages
+            tasks = []
+            for page_num in range(2, total_pages + 1):
+                tasks.append(asyncio.create_task(fetch_page(page_num)))
+
+            page_results = await asyncio.gather(*tasks)
+
+            for page_items in page_results:
+                batch_items.extend(page_items)
+
+        return batch_items
 
     if image_ids is None:
         # If no image IDs specified, get all images
