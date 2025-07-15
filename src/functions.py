@@ -228,7 +228,7 @@ async def auto_update_embeddings(
         "embeddings_updated_at": project_info.embeddings_updated_at,
     }
     if not project_info.embeddings_enabled:
-        logger.info(f"{msg_prefix} AI Search are not activated. Skipping.", extra=log_extra)
+        logger.info(f"{msg_prefix} AI Search is not activated. Skipping.", extra=log_extra)
         return
     logger.info(f"{msg_prefix} Auto update embeddings started.", extra=log_extra)
     await update_embeddings(api, project_id, force=False, project_info=project_info)
