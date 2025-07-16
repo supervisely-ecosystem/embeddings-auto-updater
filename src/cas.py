@@ -82,25 +82,25 @@ class SlyCasClient(Client):
                 is_image_url = _mime and _mime.startswith("image") or "/remote/" in c
 
                 if is_image_url:
-                    logger.debug("[Clip Client] Processing string content as image URL")
+                    logger.trace("[Clip Client] Processing string content as image URL")
                     d = Document(
                         uri=c,
                     ).load_uri_to_blob()
                 else:
-                    logger.debug("[Clip Client] Processing string content as text")
+                    logger.trace("[Clip Client] Processing string content as text")
                     d = Document(text=c)
             elif isinstance(c, Document):
                 if c.content_type in ("text", "blob"):
-                    logger.debug(
+                    logger.trace(
                         "[Clip Client] Processing Document content of type: %s", c.content_type
                     )
                     d = c
                 elif not c.blob and c.uri:
-                    logger.debug("[Clip Client] Processing Document content as URI")
+                    logger.trace("[Clip Client] Processing Document content as URI")
                     c.load_uri_to_blob()
                     d = c
                 elif c.tensor is not None:
-                    logger.debug("[Clip Client] Processing Document content as tensor")
+                    logger.trace("[Clip Client] Processing Document content as tensor")
                     d = c
                 else:
                     raise TypeError(f"unsupported input type {c!r} {c.content_type}")

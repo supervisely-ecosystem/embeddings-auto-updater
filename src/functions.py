@@ -28,6 +28,7 @@ from src.utils import (
     set_image_embeddings_updated_at,
     set_project_embeddings_updated_at,
     timeit,
+    set_update_flag,
     timezone,
 )
 
@@ -139,6 +140,7 @@ async def update_embeddings(
     #     logger.info(f"{msg_prefix} Is not updated since last embeddings update. Skipping.")
     #     return
     await set_embeddings_in_progress(api, project_id, True)
+    await set_update_flag(api, project_id)
     g.current_task = project_id
     await AutoRestartInfo.set_autorestart_params(project_id)
     try:
@@ -165,6 +167,7 @@ async def update_embeddings(
         if len(images_to_create) == 0 and len(images_to_delete) == 0:
             logger.info(f"{msg_prefix} Nothing to update.")
             await set_embeddings_in_progress(api, project_id, False)
+            await clear_update_flag(api, project_id)
             return
 
         await process_images(api, project_id, images_to_create, images_to_delete)
@@ -179,6 +182,7 @@ async def update_embeddings(
     finally:
         g.current_task = None
         await set_embeddings_in_progress(api, project_id, False)
+        await clear_update_flag(api, project_id)
 
 
 @timeit
