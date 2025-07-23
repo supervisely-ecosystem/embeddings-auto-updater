@@ -79,7 +79,7 @@ sly.logger.info("Embeddings Generator host: %s", generator_host)
 IMAGE_SIZE_FOR_CLIP = 224
 UPDATE_EMBEDDINGS_INTERVAL = update_interval  # minutes, default is 10
 CHECK_INPROGRESS_INTERVAL = int(update_frame * 60)  # minutes, default is 12 hours
-CHECK_INPROGRESS_STATUS_ENDPOINT = generator_host.rstrip("/") + "/check_background_task_status"
+CHECK_INPROGRESS_STATUS_ENDPOINT = generator_host.rstrip("/") + "/task_status"
 # endregion
 
 sly.logger.debug("Image size for CLIP: %s", IMAGE_SIZE_FOR_CLIP)

@@ -108,6 +108,7 @@ class ResponseFields:
     IMAGE_IDS = "image_ids"
     BACKGROUND_TASK_ID = "background_task_id"
     RESULT = "result"
+    IS_RUNNING = "is_running"
 
 
 class ResponseStatus:
@@ -118,6 +119,10 @@ class ResponseStatus:
     ERROR = "error"
     IN_PROGRESS = "in_progress"
     NOT_FOUND = "not_found"
+    NO_TASK = "no_task"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+    RUNNING = "running"
 
 
 class CustomDataFields:
@@ -904,7 +909,7 @@ def get_project_inprogress_status(endpoint: str, id: int) -> dict:
     :rtype: dict
     """
 
-    response = httpx.post(endpoint, json={"task_id": id})
+    response = httpx.post(endpoint, json={"project_id": id})
     return response.json()
 
 
