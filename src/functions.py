@@ -28,6 +28,7 @@ from src.utils import (
     set_image_embeddings_updated_at,
     set_project_embeddings_updated_at,
     set_update_flag,
+    stop_running_in_progress_task,
     timeit,
     timezone,
 )
@@ -296,9 +297,7 @@ async def check_in_progress_projects():
             )
             if hours_diff >= g.update_frame:
                 try:
-                    response = await get_project_inprogress_status(
-                        g.CHECK_INPROGRESS_STATUS_ENDPOINT, project_info.id
-                    )
+                    response = await get_project_inprogress_status(project_info.id)
                     cur_status = response.get(ResponseFields.STATUS)
                     is_running = response.get(ResponseFields.IS_RUNNING, False)
                     message = response.get(ResponseFields.MESSAGE, "")
@@ -341,8 +340,15 @@ async def check_in_progress_projects():
                     should_clear_in_progress = True
 
         if should_clear_in_progress:
-            await clear_update_flag(g.api, project_info.id)
-            await set_embeddings_in_progress(g.api, project_info.id, False)
+            try:
+                await stop_running_in_progress_task(project_info.id)
+                await clear_update_flag(g.api, project_info.id)
+                await set_embeddings_in_progress(g.api, project_info.id, False)
+            except Exception as e:
+                logger.error(
+                    f"{msg_prefix} Error stopping in progress task: {e}.",
+                    exc_info=True,
+                )
 
     logger.info("[All Projects] Check in progress task finished.")
 

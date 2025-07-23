@@ -13,6 +13,7 @@ services:
       LOG_LEVEL: "${LOG_LEVEL}"
       SERVER_ADDRESS: "${SERVER_ADDRESS}" # one of the public or internal addresses of the Supervisely server must be provided
       SUPERVISELY_API_SERVER_ADDRESS: "${SUPERVISELY_API_SERVER_ADDRESS}" # one of the public or internal addresses of the Supervisely server must be provided
+      SUPERVISELY_NET_SERVER_ADDRESS: "${SUPERVISELY_NET_SERVER_ADDRESS}" # Supervisely network endpoint, e.g. http://sly-net-server
       SUPERVISELY_API_ACCESS_TOKEN: "${SUPERVISELY_API_ACCESS_TOKEN}" # access token for Supervisely API
       API_TOKEN: "${API_TOKEN}" # you could set token for both publick and internal addresses, in case of internal address it will skip retrieving token from the server
       QDRANT_HOST: "${QDRANT_HOST}"
