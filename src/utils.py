@@ -124,6 +124,11 @@ class ResponseStatus:
     FAILED = "failed"
     RUNNING = "running"
 
+class RequestFields:
+    """Fields of the request file."""
+
+    PROJECT_ID = "project_id"
+    STATE = "state"
 
 class CustomDataFields:
     """Fields of the custom data."""
@@ -918,7 +923,7 @@ def get_project_inprogress_status(project_id: int) -> dict:
 
     msg_prefix = f"[Project: {project_id}]"
     try:
-        response = httpx.post(CHECK_INPROGRESS_STATUS_ENDPOINT, json={"project_id": project_id})
+        response = httpx.post(CHECK_INPROGRESS_STATUS_ENDPOINT, json={RequestFields.STATE:{RequestFields.PROJECT_ID: project_id}})
         response.raise_for_status()  # Raise an exception for HTTP error status codes
 
         response_data = response.json()
@@ -1030,7 +1035,7 @@ def stop_running_in_progress_task(project_id: int) -> None:
     """
     from globals import CANCEL_INPROGRESS_TASK_ENDPOINT
 
-    response = httpx.post(CANCEL_INPROGRESS_TASK_ENDPOINT, json={"project_id": project_id})
+    response = httpx.post(CANCEL_INPROGRESS_TASK_ENDPOINT, json={RequestFields.STATE:{RequestFields.PROJECT_ID: project_id}})
 
     response_json = response.json()
     if response.status_code != 200:
