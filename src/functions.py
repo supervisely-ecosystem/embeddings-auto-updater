@@ -27,8 +27,9 @@ from src.utils import (
     set_embeddings_in_progress,
     set_image_embeddings_updated_at,
     set_project_embeddings_updated_at,
-    timeit,
     set_update_flag,
+    stop_running_in_progress_task,
+    timeit,
     timezone,
 )
 
@@ -295,24 +296,68 @@ async def check_in_progress_projects():
                 f"hours difference: {hours_diff:.2f}"
             )
             if hours_diff >= g.update_frame:
-                response = await get_project_inprogress_status(
-                    g.CHECK_INPROGRESS_STATUS_ENDPOINT, project_info.id
-                )
-                cur_status = response.get(ResponseFields.STATUS)
-                if cur_status != ResponseStatus.IN_PROGRESS:
-                    logger.info(
-                        f"{msg_prefix} Embeddings creation task status: {cur_status}."
-                        "Clearing in progress flag."
+                try:
+                    response = await get_project_inprogress_status(project_info.id)
+                    cur_status = response.get(ResponseFields.STATUS)
+                    is_running = response.get(ResponseFields.IS_RUNNING, False)
+                    message = response.get(ResponseFields.MESSAGE, "")
+
+                    # Clear in progress flag for all statuses except RUNNING
+                    # Possible statuses from endpoint: NO_TASK, CANCELLED, COMPLETED, FAILED, RUNNING
+                    if (
+                        cur_status
+                        in [
+                            ResponseStatus.NO_TASK,
+                            ResponseStatus.CANCELLED,
+                            ResponseStatus.COMPLETED,
+                            ResponseStatus.FAILED,
+                        ]
+                        or not is_running
+                    ):
+                        logger.info(
+                            f"{msg_prefix} Embeddings creation task status: {cur_status}",
+                            extra={
+                                "is_running": is_running,
+                                "message": message
+                            }
+                        )
+                        should_clear_in_progress = True
+                    elif cur_status == ResponseStatus.RUNNING or is_running:
+                        logger.debug(
+                            f"{msg_prefix} Embeddings creation task status: {cur_status}",
+                            extra={
+                                "is_running": is_running,
+                                "message": message
+                            }
+                        )
+                    else:
+                        # Fallback: if status is unknown, log warning but clear the flag to avoid stuck projects
+                        logger.warning(
+                            f"{msg_prefix} Unknown task status: {cur_status}",
+                            extra={
+                                "is_running": is_running,
+                                "message": message
+                            }
+                        )
+                        should_clear_in_progress = True
+                except Exception as e:
+                    logger.error(
+                        f"{msg_prefix} Error checking task status via endpoint: {e}. ",
+                        exc_info=True,
                     )
                     should_clear_in_progress = True
-                else:
-                    logger.debug(
-                        f"{msg_prefix} Embeddings creation task status: {cur_status}. "
-                    )
 
         if should_clear_in_progress:
-            await clear_update_flag(g.api, project_info.id)
-            await set_embeddings_in_progress(g.api, project_info.id, False)
+            try:
+                logger.info(f"{msg_prefix} Stopping task and resetting in progress state.")
+                await stop_running_in_progress_task(project_info.id)
+                await clear_update_flag(g.api, project_info.id)
+                await set_embeddings_in_progress(g.api, project_info.id, False)
+            except Exception as e:
+                logger.error(
+                    f"{msg_prefix} Error stopping in progress task: {e}.",
+                    exc_info=True,
+                )
 
     logger.info("[All Projects] Check in progress task finished.")
 

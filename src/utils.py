@@ -108,6 +108,7 @@ class ResponseFields:
     IMAGE_IDS = "image_ids"
     BACKGROUND_TASK_ID = "background_task_id"
     RESULT = "result"
+    IS_RUNNING = "is_running"
 
 
 class ResponseStatus:
@@ -118,7 +119,16 @@ class ResponseStatus:
     ERROR = "error"
     IN_PROGRESS = "in_progress"
     NOT_FOUND = "not_found"
+    NO_TASK = "no_task"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+    RUNNING = "running"
 
+class RequestFields:
+    """Fields of the request file."""
+
+    PROJECT_ID = "project_id"
+    STATE = "state"
 
 class CustomDataFields:
     """Fields of the custom data."""
@@ -876,36 +886,106 @@ def is_task_running(api: sly.Api, task_id: int) -> Optional[bool]:
     return status
 
 
-def get_app_host(api: sly.Api, slug: str) -> str:
+def get_app_host(api: sly.Api, slug: str, net_server_address: str = None) -> str:
     """Get the app host URL from the Supervisely API.
 
     :param api: Instance of supervisely API.
     :type api: sly.Api
+    :param slug: Slug of the app to get the host URL for.
+    :type slug: str
+    :param net_server_address: Optional custom net server address. If None, uses the default
+        server address from the API instance.
+    :type net_server_address: str, optional
     :return: The app host URL.
     :rtype: str
     """
+    server_address = net_server_address or api.server_address
+    net_appendix = "/" if net_server_address else "/net/"
     session_token = api.app.get_session_token(slug)
     sly.logger.debug("Session token for CLIP slug %s: %s", slug, session_token)
-    host = api.server_address.rstrip("/") + "/net/" + session_token
+    host = server_address.rstrip("/") + net_appendix + session_token
     sly.logger.debug("App host URL for CLIP: %s", host)
     return host
 
 
 @to_thread
 @timeit
-def get_project_inprogress_status(endpoint: str, id: int) -> dict:
+def get_project_inprogress_status(project_id: int) -> dict:
     """Get the project in-progress status by ID by sending a request to the service endpoint.
 
-    :param endpoint: Endpoint URL of the service.
-    :type endpoint: str
-    :param id: ID of the project.
-    :type id: int
-    :return: Dictionary with project in-progress status.
+    :param project_id: ID of the project.
+    :type project_id: int
+    :return: Dictionary with project in-progress status containing message, status, and is_running fields.
     :rtype: dict
+    :raises: Exception if request fails or returns error status code.
     """
+    from globals import CHECK_INPROGRESS_STATUS_ENDPOINT
 
-    response = httpx.post(endpoint, json={"task_id": id})
-    return response.json()
+    msg_prefix = f"[Project: {project_id}]"
+    try:
+        response = httpx.post(CHECK_INPROGRESS_STATUS_ENDPOINT, json={RequestFields.STATE:{RequestFields.PROJECT_ID: project_id}})
+        response.raise_for_status()  # Raise an exception for HTTP error status codes
+
+        response_data = response.json()
+
+        # Log the response for debugging
+        sly.logger.debug(
+            f"{msg_prefix} Received task status response: {response_data}",
+        )
+
+        # Validate that the response contains expected fields
+        expected_fields = {ResponseFields.MESSAGE, ResponseFields.STATUS, ResponseFields.IS_RUNNING}
+        if not all(field in response_data for field in expected_fields):
+            sly.logger.warning(
+                f"{msg_prefix} Response missing expected fields. Expected: {expected_fields}, Got: {set(response_data.keys())}",
+            )
+
+        return response_data
+
+    except httpx.HTTPStatusError as e:
+        error_msg = f"{msg_prefix} HTTP error {e.response.status_code} when checking project status"
+        sly.logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+    except httpx.RequestError as e:
+        error_msg = f"{msg_prefix} Request error when checking project status: {str(e)}"
+        sly.logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+    except Exception as e:
+        error_msg = f"{msg_prefix} Unexpected error when checking project status: {str(e)}"
+        sly.logger.error(error_msg, exc_info=True)
+        raise RuntimeError(error_msg) from e
+
+
+def is_project_task_running(project_id: int) -> bool:
+    """Check if there is a running task for the project.
+
+    :param project_id: ID of the project to check.
+    :type project_id: int
+    :return: True if task is running, False otherwise.
+    :rtype: bool
+    """
+    try:
+        status_data = get_project_inprogress_status(project_id)
+        return status_data.get(ResponseFields.IS_RUNNING, False)
+    except Exception as e:
+        sly.logger.error(f"Error checking if project {project_id} task is running: {e}")
+        return False
+
+
+def get_project_task_status(project_id: int) -> str:
+    """Get the current status of the project task.
+
+    :param project_id: ID of the project to check.
+    :type project_id: int
+    :return: Task status string (e.g., 'running', 'completed', 'failed', 'no_task', etc.).
+    :rtype: str
+    """
+    try:
+        status_data = get_project_inprogress_status(project_id)
+        return status_data.get(ResponseFields.STATUS, ResponseStatus.NOT_FOUND)
+    except Exception as e:
+        sly.logger.error(f"Error getting project {project_id} task status: {e}")
+        return ResponseStatus.ERROR
 
 
 @to_thread
@@ -943,3 +1023,22 @@ def check_generator_is_ready(endpoint: str, timeout: int = 10) -> bool:
 
     sly.logger.debug("Generator service is not ready or unreachable.")
     return False
+
+
+@to_thread
+@timeit
+def stop_running_in_progress_task(project_id: int) -> None:
+    """Stop a running in-progress task by its ID.
+
+    :param project_id: ID of the task to stop
+    :type project_id: int
+    """
+    from globals import CANCEL_INPROGRESS_TASK_ENDPOINT
+
+    response = httpx.post(CANCEL_INPROGRESS_TASK_ENDPOINT, json={RequestFields.STATE:{RequestFields.PROJECT_ID: project_id}})
+
+    response_json = response.json()
+    if response.status_code != 200:
+        message = response_json.get(ResponseFields.MESSAGE, response.text)
+        sly.logger.error(f"[Project: {project_id}] Failed to stop in-progress task: {message}")
+    return response_json

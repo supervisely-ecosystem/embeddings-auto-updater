@@ -54,6 +54,7 @@ sly.logger.debug("Connected to Supervisely API: %s", api.server_address)
 generator_host = os.getenv("GENERATOR_HOST")
 qdrant_host = os.getenv("QDRANT_HOST")
 clip_host = os.getenv("CLIP_HOST", None)
+net_server_address = os.getenv("SUPERVISELY_NET_SERVER_ADDRESS", None)
 
 update_interval = os.getenv("UPDATE_INTERVAL")
 update_interval = (
@@ -73,13 +74,19 @@ if not generator_host:
     raise ValueError("GENERATOR_HOST is not set in the environment variables")
 
 sly.logger.info("Qdrant host: %s", qdrant_host)
+sly.logger.info("Supervisely network server address: %s", net_server_address)
 sly.logger.info("Embeddings Generator host: %s", generator_host)
+if clip_host is not None and clip_host != "" and net_server_address is not None:
+    sly.logger.info(
+        "CLIP host is set and will be used instead of Supervisely network server address"
+    )
 
 # region constants
 IMAGE_SIZE_FOR_CLIP = 224
 UPDATE_EMBEDDINGS_INTERVAL = update_interval  # minutes, default is 10
 CHECK_INPROGRESS_INTERVAL = int(update_frame * 60)  # minutes, default is 12 hours
-CHECK_INPROGRESS_STATUS_ENDPOINT = generator_host.rstrip("/") + "/check_background_task_status"
+CHECK_INPROGRESS_STATUS_ENDPOINT = generator_host.rstrip("/") + "/task_status"
+CANCEL_INPROGRESS_TASK_ENDPOINT = generator_host.rstrip("/") + "/cancel_embeddings"
 # endregion
 
 sly.logger.debug("Image size for CLIP: %s", IMAGE_SIZE_FOR_CLIP)

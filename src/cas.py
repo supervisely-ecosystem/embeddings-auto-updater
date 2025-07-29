@@ -36,6 +36,8 @@ class SlyCasClient(Client):
                 _new_port = 443
             elif self._scheme == "http":
                 _new_port = 80
+            else:
+                _new_port = _port if _port else 80
         except:
             raise ValueError(f"{server} is not a valid scheme")
 
@@ -50,14 +52,9 @@ class SlyCasClient(Client):
                 warnings.warn("Credential is not supported for websocket, please use grpc or http")
 
         if self._scheme in ("grpc", "http", "websocket"):
-            if self._scheme == "http":
-                if r.path.startswith("/net/") and _port is None:
-                    _kwargs = dict(host=r.hostname, port=_port, protocol=self._scheme, tls=_tls)
-                elif r.path.startswith("/net/") and _port:
-                    _new_port = _port
-                    _kwargs = dict(host=r.hostname, port=_port, protocol=self._scheme, tls=_tls)
-            else:
-                _kwargs = dict(host=r.hostname, port=_port, protocol=self._scheme, tls=_tls)
+            if self._scheme == "http" and r.path and _port:
+                _new_port = _port
+            _kwargs = dict(host=r.hostname, port=_port, protocol=self._scheme, tls=_tls)
 
             from jina import Client
 
@@ -190,12 +187,13 @@ class CasUrlClient(CasClient):
 def _init_client() -> Union[CasUrlClient, CasClient]:
     # Always fetch fresh host information on each initialization
     processed_clip_host = g.clip_host
+    processed_net_server_address = g.net_server_address
 
     if processed_clip_host is None or processed_clip_host == "":
         from src.utils import get_app_host
 
         sly.logger.info("CLIP host not set in environment, fetching from app host...")
-        processed_clip_host = get_app_host(g.api, CLIP_SLUG)
+        processed_clip_host = get_app_host(g.api, CLIP_SLUG, processed_net_server_address)
         sly.logger.info("Fetched CLIP host from app: %s", processed_clip_host)
 
     if not processed_clip_host:
