@@ -94,3 +94,4 @@ sly.logger.debug("Update interval in minutes: %s", UPDATE_EMBEDDINGS_INTERVAL)
 sly.logger.debug("Update frame in hours: %s", update_frame)
 
 current_task = None  # project_id which is currently processed creating embeddings
+current_task_handle = None  # asyncio.Task handle for current embeddings task

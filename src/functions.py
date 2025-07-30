@@ -1,3 +1,4 @@
+import asyncio
 import random
 from typing import List, Optional, Tuple
 
@@ -135,11 +136,7 @@ async def update_embeddings(
     if project_info.embeddings_in_progress is True and not skip_in_progress_check:
         logger.info(f"{msg_prefix} Embeddings update is already in progress. Skipping.")
         return
-    # if project_info.embeddings_updated_at is not None and parse_timestamp(
-    #     project_info.embeddings_updated_at
-    # ) > parse_timestamp(project_info.updated_at):
-    #     logger.info(f"{msg_prefix} Is not updated since last embeddings update. Skipping.")
-    #     return
+
     await set_embeddings_in_progress(api, project_id, True)
     await set_update_flag(api, project_id)
     g.current_task = project_id
@@ -172,8 +169,14 @@ async def update_embeddings(
             return
 
         await process_images(api, project_id, images_to_create, images_to_delete)
+
         if len(images_to_create) > 0 or len(images_to_delete) > 0:
             await set_project_embeddings_updated_at(api, project_id)
+    except asyncio.CancelledError:
+        logger.debug(
+            f"{msg_prefix} Embeddings update was cancelled, while processing images in update_embeddings function."
+        )
+        raise
     except Exception as e:
         logger.error(
             f"{msg_prefix} Error during embeddings update: {e}",
@@ -235,6 +238,7 @@ async def auto_update_embeddings(
     if not project_info.embeddings_enabled:
         logger.info(f"{msg_prefix} AI Search is not activated. Skipping.", extra=log_extra)
         return
+
     logger.info(f"{msg_prefix} Auto update embeddings started.", extra=log_extra)
     await update_embeddings(api, project_id, force=False, project_info=project_info)
     logger.info(f"{msg_prefix} Auto update embeddings finished.")
@@ -250,12 +254,26 @@ async def auto_update_all_embeddings():
         random.shuffle(project_infos)
         for project_info in project_infos:
             try:
-                await auto_update_embeddings(g.api, project_info.id)
+                # Create a task that can be cancelled
+                task = asyncio.create_task(
+                    auto_update_embeddings(g.api, project_info.id, project_info)
+                )
+                g.current_task_handle = task
+
+                await task
+            except asyncio.CancelledError:
+                logger.info(
+                    f"[Project: {project_info.id}] Task was cancelled, continuing to next project."
+                )
+                continue
             except Exception as e:
                 logger.error(
                     f"[Project: {project_info.id}] Error updating embeddings : {e}",
                     exc_info=True,
                 )
+            finally:
+                g.current_task_handle = None
+
         await AutoRestartInfo.clear_autorestart_params()
     except Exception as e:
         logger.error(f"Error in auto_update_all_embeddings: {e}", exc_info=True)
@@ -316,28 +334,19 @@ async def check_in_progress_projects():
                     ):
                         logger.info(
                             f"{msg_prefix} Embeddings creation task status: {cur_status}",
-                            extra={
-                                "is_running": is_running,
-                                "message": message
-                            }
+                            extra={"is_running": is_running, "message": message},
                         )
                         should_clear_in_progress = True
                     elif cur_status == ResponseStatus.RUNNING or is_running:
                         logger.debug(
                             f"{msg_prefix} Embeddings creation task status: {cur_status}",
-                            extra={
-                                "is_running": is_running,
-                                "message": message
-                            }
+                            extra={"is_running": is_running, "message": message},
                         )
                     else:
                         # Fallback: if status is unknown, log warning but clear the flag to avoid stuck projects
                         logger.warning(
                             f"{msg_prefix} Unknown task status: {cur_status}",
-                            extra={
-                                "is_running": is_running,
-                                "message": message
-                            }
+                            extra={"is_running": is_running, "message": message},
                         )
                         should_clear_in_progress = True
                 except Exception as e:
@@ -405,3 +414,86 @@ async def safe_check_autorestart():
                     )
     except Exception as e:
         sly.logger.error("Error in autorestart check", exc_info=True)
+
+
+@timeit
+async def stop_embeddings_update(api: sly.Api, project_id: int) -> dict:
+    """
+    Stop auto_update_embeddings task for a specific project only if it's currently active.
+
+    :param api: Supervisely API object
+    :param project_id: Project ID to stop the embeddings update for
+    :return: Dictionary with operation status and details
+    """
+    msg_prefix = f"[Project: {project_id}]"
+    result = {
+        "project_id": project_id,
+        "is_current_task": g.current_task == project_id,
+        "stopped": False,
+        "message": "",
+        "details": {},
+    }
+
+    try:
+        # Check if this project is currently being processed
+        if g.current_task != project_id:
+            message = f"{msg_prefix} Is not the current active task in the auto-updater."
+            result["message"] = message
+            logger.debug(message)
+            return result
+
+        logger.info(f"{msg_prefix} Stopping auto update...")
+
+        # Cancel the current task if it exists
+        if g.current_task_handle is not None:
+            g.current_task_handle.cancel()
+            result["details"]["cancel_task"] = "success"
+            logger.debug(f"{msg_prefix} Cancelled current task.")
+        else:
+            result["details"]["cancel_task"] = "failed"
+            result["details"]["cancel_task_reason"] = "No task handle found to cancel"
+            logger.warning(f"{msg_prefix} No task handle found to cancel.")
+
+        # Clear current task
+        g.current_task = None
+        result["details"]["clear_current_task"] = "success"
+        logger.debug(f"{msg_prefix} Cleared current task.")
+
+        # Clear embeddings in progress flag
+        try:
+            await set_embeddings_in_progress(api, project_id, False)
+            result["details"]["clear_in_progress_flag"] = "success"
+            logger.debug(f"{msg_prefix} Set embeddings in progress flag to False.")
+        except Exception as e:
+            result["details"]["clear_in_progress_flag"] = "failed"
+            logger.error(
+                f"{msg_prefix} Error setting embeddings in progress flag to False: {str(e)}"
+            )
+
+        # Clear update flag
+        try:
+            await clear_update_flag(api, project_id)
+            result["details"]["clear_update_flag"] = "success"
+            logger.debug(f"{msg_prefix} Cleared embeddings update flag in custom data.")
+        except Exception as e:
+            result["details"]["clear_update_flag"] = "failed"
+            logger.error(f"{msg_prefix} Error clearing update flag in custom data: {str(e)}")
+
+        # Clear autorestart params
+        try:
+            await AutoRestartInfo.clear_autorestart_params()
+            result["details"]["clear_autorestart"] = "success"
+            logger.debug(f"{msg_prefix} Cleared autorestart parameters.")
+        except Exception as e:
+            result["details"]["clear_autorestart"] = "failed"
+            logger.warning(f"{msg_prefix} Error clearing autorestart params: {str(e)}")
+
+        result["stopped"] = True
+        result["message"] = "Current auto update task cancelled successfully."
+        logger.info(f"{msg_prefix} Current auto update task cancelled successfully.")
+
+    except Exception as e:
+        result["message"] = f"Error stopping auto update task: {str(e)}"
+        logger.error(f"{msg_prefix} Error stopping auto update task: {str(e)}", exc_info=True)
+
+    return result

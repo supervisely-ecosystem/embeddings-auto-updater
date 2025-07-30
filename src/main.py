@@ -10,6 +10,7 @@ from src.functions import (
     auto_update_all_embeddings,
     check_in_progress_projects,
     safe_check_autorestart,
+    stop_embeddings_update,
 )
 from src.qdrant import client as qdrant_client
 from src.utils import check_generator_is_ready, run_safe
@@ -135,3 +136,28 @@ async def health_check():
         },
         status_code=status_code,
     )
+
+
+@server.post("/stop-embeddings-update/{project_id}")
+async def stop_update_project(project_id: int):
+    """
+    Stop auto_update_embeddings task for a specific project and reset all related states.
+
+    :param project_id: Project ID to stop the embeddings update for
+    :return: JSON response with operation status and details
+    """
+    try:
+        result = await stop_embeddings_update(g.api, project_id)
+        status_code = 200 if result["stopped"] else 400
+        return JSONResponse(result, status_code=status_code)
+    except Exception as e:
+        sly.logger.error(f"Error in stop_embeddings_update_endpoint: {e}", exc_info=True)
+        return JSONResponse(
+            {
+                "project_id": project_id,
+                "stopped": False,
+                "message": f"Internal server error: {str(e)}",
+                "details": {},
+            },
+            status_code=500,
+        )

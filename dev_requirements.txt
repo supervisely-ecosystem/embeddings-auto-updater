@@ -1,5 +1,6 @@
 pydantic==1.10.8
-supervisely==6.73.404
+# supervisely==6.73.408
+git+https://github.com/supervisely/supervisely.git@refactor-inctance-version
 clip-client==0.8.3
 qdrant-client==1.12.1
 APScheduler==3.11.0
