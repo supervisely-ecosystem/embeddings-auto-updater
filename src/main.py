@@ -148,14 +148,19 @@ async def stop_update_project(project_id: int):
     """
     try:
         result = await stop_embeddings_update(g.api, project_id)
-        status_code = 200 if result["stopped"] else 400
+        # Check if operation was successful or if there was nothing to stop
+        operation_successful = result.get("success", False)
+        if operation_successful:
+            status_code = 200
+        else:
+            status_code = 400
         return JSONResponse(result, status_code=status_code)
     except Exception as e:
         sly.logger.error(f"Error in stop_embeddings_update_endpoint: {e}", exc_info=True)
         return JSONResponse(
             {
                 "project_id": project_id,
-                "stopped": False,
+                "success": False,
                 "message": f"Internal server error: {str(e)}",
                 "details": {},
             },

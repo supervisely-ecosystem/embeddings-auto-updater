@@ -96,14 +96,14 @@ Stop embeddings update task for a specific project only if it's currently the ac
 {
 	"project_id": 12345,
 	"is_current_task": true,
-	"stopped": true,
-	"message": "Current auto update task stopped successfully.",
+	"success": true,
+	"message": "Stopped auto update task successfully",
 	"details": {
-		"cancel_task": true,
-		"clear_current_task": true,
-		"clear_in_progress_flag": true,
-		"clear_update_flag": true,
-		"clear_autorestart": true
+		"cancel_task": "success",
+		"clear_current_task": "success",
+		"clear_in_progress_flag": "success",
+		"clear_update_flag": "success",
+		"clear_autorestart": "success"
 	}
 }
 ```
@@ -114,7 +114,7 @@ Stop embeddings update task for a specific project only if it's currently the ac
 {
 	"project_id": 12345,
 	"is_current_task": false,
-	"stopped": false,
+	"success": true,
 	"message": "[Project: 12345] Is not the current active task in the auto-updater.",
 	"details": {}
 }

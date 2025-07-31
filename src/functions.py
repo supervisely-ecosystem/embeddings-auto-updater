@@ -429,7 +429,7 @@ async def stop_embeddings_update(api: sly.Api, project_id: int) -> dict:
     result = {
         "project_id": project_id,
         "is_current_task": g.current_task == project_id,
-        "stopped": False,
+        "success": False,
         "message": "",
         "details": {},
     }
@@ -437,6 +437,7 @@ async def stop_embeddings_update(api: sly.Api, project_id: int) -> dict:
     try:
         # Check if this project is currently being processed
         if g.current_task != project_id:
+            result["success"] = True
             message = f"{msg_prefix} Is not the current active task in the auto-updater."
             result["message"] = message
             logger.debug(message)
@@ -448,11 +449,16 @@ async def stop_embeddings_update(api: sly.Api, project_id: int) -> dict:
         if g.current_task_handle is not None:
             g.current_task_handle.cancel()
             result["details"]["cancel_task"] = "success"
-            logger.debug(f"{msg_prefix} Cancelled current task.")
+            logger.debug(f"{msg_prefix} Stopped auto update task successfully.")
+            result["message"] = "Stopped auto update task successfully"
         else:
             result["details"]["cancel_task"] = "failed"
             result["details"]["cancel_task_reason"] = "No task handle found to cancel"
             logger.warning(f"{msg_prefix} No task handle found to cancel.")
+            result["message"] = (
+                "No task handle found to cancel. Stopping auto update task is finished."
+            )
+        result["success"] = True
 
         # Clear current task
         g.current_task = None
@@ -468,6 +474,10 @@ async def stop_embeddings_update(api: sly.Api, project_id: int) -> dict:
             result["details"]["clear_in_progress_flag"] = "failed"
             logger.error(
                 f"{msg_prefix} Error setting embeddings in progress flag to False: {str(e)}"
+            )
+            result["success"] = False
+            result["message"] = (
+                "Failed to clear the in-progress status. Please contact technical support."
             )
 
         # Clear update flag
@@ -488,9 +498,7 @@ async def stop_embeddings_update(api: sly.Api, project_id: int) -> dict:
             result["details"]["clear_autorestart"] = "failed"
             logger.warning(f"{msg_prefix} Error clearing autorestart params: {str(e)}")
 
-        result["stopped"] = True
-        result["message"] = "Current auto update task cancelled successfully."
-        logger.info(f"{msg_prefix} Current auto update task cancelled successfully.")
+        logger.info(f"{msg_prefix} Stopping auto update task is finished.")
 
     except Exception as e:
         result["message"] = f"Error stopping auto update task: {str(e)}"
