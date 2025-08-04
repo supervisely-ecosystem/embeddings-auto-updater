@@ -74,6 +74,52 @@ The service provides robust logging and monitoring capabilities:
 -   **Detailed logging**: Configurable log levels for debugging and monitoring.
 -   **Error handling**: Robust error handling with retry mechanisms.
 
+### API Endpoints
+
+The service exposes several API endpoints for monitoring and management:
+
+#### GET /health
+
+Health check endpoint that verifies the status of all connected services (Qdrant, CLIP, Generator).
+
+#### POST /stop-embeddings-update/{project_id}
+
+Stop embeddings update task for a specific project only if it's currently the active task.
+
+**Parameters:**
+
+-   `project_id` (path parameter): ID of the project to stop
+
+**Response when project is current task:**
+
+```json
+{
+	"project_id": 12345,
+	"is_current_task": true,
+	"success": true,
+	"message": "Stopped auto update task successfully",
+	"details": {
+		"cancel_task": "success",
+		"clear_current_task": "success",
+		"clear_in_progress_flag": "success",
+		"clear_update_flag": "success",
+		"clear_autorestart": "success"
+	}
+}
+```
+
+**Response when project is not current task:**
+
+```json
+{
+	"project_id": 12345,
+	"is_current_task": false,
+	"success": true,
+	"message": "[Project: 12345] Is not the current active task in the auto-updater.",
+	"details": {}
+}
+```
+
 ---
 
 For technical support and questions, join our [Supervisely Ecosystem Slack community](https://supervisely.com/slack).

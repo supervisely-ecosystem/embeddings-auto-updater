@@ -109,6 +109,7 @@ class ResponseFields:
     BACKGROUND_TASK_ID = "background_task_id"
     RESULT = "result"
     IS_RUNNING = "is_running"
+    PROGRESS = "progress"
 
 
 class ResponseStatus:
@@ -124,11 +125,13 @@ class ResponseStatus:
     FAILED = "failed"
     RUNNING = "running"
 
+
 class RequestFields:
     """Fields of the request file."""
 
     PROJECT_ID = "project_id"
     STATE = "state"
+
 
 class CustomDataFields:
     """Fields of the custom data."""
@@ -923,7 +926,10 @@ def get_project_inprogress_status(project_id: int) -> dict:
 
     msg_prefix = f"[Project: {project_id}]"
     try:
-        response = httpx.post(CHECK_INPROGRESS_STATUS_ENDPOINT, json={RequestFields.STATE:{RequestFields.PROJECT_ID: project_id}})
+        response = httpx.post(
+            CHECK_INPROGRESS_STATUS_ENDPOINT,
+            json={RequestFields.STATE: {RequestFields.PROJECT_ID: project_id}},
+        )
         response.raise_for_status()  # Raise an exception for HTTP error status codes
 
         response_data = response.json()
@@ -1035,10 +1041,78 @@ def stop_running_in_progress_task(project_id: int) -> None:
     """
     from globals import CANCEL_INPROGRESS_TASK_ENDPOINT
 
-    response = httpx.post(CANCEL_INPROGRESS_TASK_ENDPOINT, json={RequestFields.STATE:{RequestFields.PROJECT_ID: project_id}})
+    response = httpx.post(
+        CANCEL_INPROGRESS_TASK_ENDPOINT,
+        json={RequestFields.STATE: {RequestFields.PROJECT_ID: project_id}},
+    )
 
     response_json = response.json()
     if response.status_code != 200:
         message = response_json.get(ResponseFields.MESSAGE, response.text)
         sly.logger.error(f"[Project: {project_id}] Failed to stop in-progress task: {message}")
     return response_json
+
+
+@to_thread
+def set_processing_progress(
+    project_id: int, total: int, current: int = 0, status: str = "processing"
+):
+    """Set processing progress for a project.
+
+    :param project_id: Project ID
+    :param total: Total number of items to process
+    :param current: Current number of processed items
+    :param status: Status of processing (processing, completed, error)
+    """
+    import src.globals as g
+
+    g.current_task_progress = {
+        "project_id": project_id,
+        "total": total,
+        "current": current,
+        "status": status,
+    }
+
+
+@to_thread
+def update_processing_progress(project_id: int, current: int, status: str = "processing"):
+    """Update current progress for a project.
+
+    :param project_id: Project ID
+    :param current: Current number of processed items
+    :param status: Status of processing (processing, completed, error)
+    """
+    import src.globals as g
+
+    if g.current_task_progress.get("project_id") == project_id:
+        g.current_task_progress["current"] = current
+        g.current_task_progress["status"] = status
+
+
+@to_thread
+def get_processing_progress(project_id: int) -> Optional[Dict]:
+    """Get processing progress for a project.
+
+    :param project_id: Project ID
+    :return: Dictionary with progress info or None if not found
+    """
+    import src.globals as g
+
+    if (
+        isinstance(g.current_task_progress, dict)
+        and g.current_task_progress.get("project_id") == project_id
+    ):
+        return g.current_task_progress
+    return None
+
+
+@to_thread
+def clear_processing_progress(project_id: int):
+    """Clear processing progress for a project.
+
+    :param project_id: Project ID
+    """
+    import src.globals as g
+
+    if g.current_task_progress.get("project_id") == project_id:
+        g.current_task_progress = None

@@ -2,6 +2,7 @@ import datetime
 
 import supervisely as sly
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from fastapi import Request
 from fastapi.responses import JSONResponse
 
 import src.globals as g
@@ -10,9 +11,10 @@ from src.functions import (
     auto_update_all_embeddings,
     check_in_progress_projects,
     safe_check_autorestart,
+    stop_embeddings_update,
 )
 from src.qdrant import client as qdrant_client
-from src.utils import check_generator_is_ready, run_safe
+from src.utils import ResponseFields, check_generator_is_ready, get_processing_progress, run_safe
 
 app = sly.Application()
 server = app.get_server()
@@ -135,3 +137,66 @@ async def health_check():
         },
         status_code=status_code,
     )
+
+
+@server.post("/stop-embeddings-update/{project_id}")
+async def stop_update_project(project_id: int):
+    """
+    Stop auto_update_embeddings task for a specific project and reset all related states.
+
+    :param project_id: Project ID to stop the embeddings update for
+    :return: JSON response with operation status and details
+    """
+    try:
+        result = await stop_embeddings_update(g.api, project_id)
+        # Check if operation was successful or if there was nothing to stop
+        operation_successful = result.get("success", False)
+        if operation_successful:
+            status_code = 200
+        else:
+            status_code = 400
+        return JSONResponse(result, status_code=status_code)
+    except Exception as e:
+        sly.logger.error(f"Error in stop_embeddings_update_endpoint: {e}", exc_info=True)
+        return JSONResponse(
+            {
+                "project_id": project_id,
+                "success": False,
+                "message": f"Internal server error: {str(e)}",
+                "details": {},
+            },
+            status_code=500,
+        )
+
+
+@server.post("/processing_progress")
+async def processing_progress_handler(request: Request):
+    """Get processing progress for a project or all projects."""
+    try:
+        state = request.state.state
+        project_id = state["project_id"]
+        if project_id is not None:
+            # Get progress for specific project
+            progress = await get_processing_progress(project_id)
+            if progress is None:
+                return JSONResponse(
+                    {
+                        ResponseFields.MESSAGE: f"No processing progress found for project {project_id}",
+                        ResponseFields.PROGRESS: None,
+                    },
+                    status_code=200,
+                )
+            return JSONResponse({ResponseFields.PROGRESS: progress}, status_code=200)
+        else:
+            return JSONResponse(
+                {
+                    ResponseFields.MESSAGE: "Project ID is not specified. Returning progress for all projects.",
+                    ResponseFields.PROGRESS: None,
+                },
+                status_code=200,
+            )
+
+    except Exception as e:
+        message = f"Error getting processing progress: {str(e)}"
+        sly.logger.error(message, exc_info=True)
+        return JSONResponse({ResponseFields.MESSAGE: message}, status_code=500)

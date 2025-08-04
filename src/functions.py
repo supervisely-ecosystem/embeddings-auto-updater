@@ -1,7 +1,10 @@
+import asyncio
 import random
+from asyncio import sleep as asyncio_sleep
 from typing import List, Optional, Tuple
 
 import supervisely as sly
+from docarray import Document
 from supervisely.sly_logger import logger
 
 import src.cas as cas
@@ -13,6 +16,7 @@ from src.utils import (
     CustomDataFields,
     ResponseFields,
     ResponseStatus,
+    clear_processing_progress,
     clear_update_flag,
     create_lite_image_infos,
     datetime,
@@ -26,11 +30,13 @@ from src.utils import (
     parse_timestamp,
     set_embeddings_in_progress,
     set_image_embeddings_updated_at,
+    set_processing_progress,
     set_project_embeddings_updated_at,
     set_update_flag,
     stop_running_in_progress_task,
     timeit,
     timezone,
+    update_processing_progress,
 )
 
 
@@ -68,55 +74,80 @@ async def process_images(
     if len(to_create) == 0 and len(to_delete) == 0:
         logger.debug(f"{msg_prefix} Nothing to update.")
         return to_create, vectors
+    try:
+        to_create = await create_lite_image_infos(
+            cas_size=g.IMAGE_SIZE_FOR_CLIP,
+            image_infos=to_create,
+        )
 
-    to_create = await create_lite_image_infos(
-        cas_size=g.IMAGE_SIZE_FOR_CLIP,
-        image_infos=to_create,
-    )
+        # if await qdrant.collection_exists(project_id):
+        # Get diff of image infos, check if they are already in the Qdrant collection
 
-    # if await qdrant.collection_exists(project_id):
-    # Get diff of image infos, check if they are already in the Qdrant collection
+        if check_collection_exists:
+            await qdrant.get_or_create_collection(project_id)
 
-    if check_collection_exists:
-        await qdrant.get_or_create_collection(project_id)
+        current_progress = 0
+        total_progress = len(to_create)
 
-    current_progress = 0
-    total_progress = len(to_create)
+        # Initialize progress tracking
+        if total_progress > 0:
+            await set_processing_progress(project_id, total_progress, 0, "processing")
 
-    if len(to_create) > 0:
-        logger.debug(f"{msg_prefix} Images to be vectorized: {total_progress}.")
-        for image_batch in sly.batched(to_create):
-            # Get vectors from images.
-            vectors_batch = await cas.get_vectors(
-                [image_info.cas_url for image_info in image_batch]
-            )
-            vectors_batch = fix_vectors(vectors_batch)
-            logger.debug(f"{msg_prefix} Got {len(vectors_batch)} vectors for images.")
+        if len(to_create) > 0:
+            logger.debug(f"{msg_prefix} Images to be vectorized: {total_progress}.")
+            for image_batch in sly.batched(to_create):
+                # Download images as bytes and create Document objects
+                image_ids = [image_info.id for image_info in image_batch]
+                image_bytes_list = await api.image.download_bytes_many_async(image_ids)
 
-            # Upsert vectors to Qdrant.
-            await qdrant.upsert(project_id, vectors_batch, image_batch)
-            current_progress += len(image_batch)
-            logger.debug(
-                f"{msg_prefix} Upserted {len(vectors_batch)} vectors to Qdrant. [{current_progress}/{total_progress}]",
-            )
-            await set_image_embeddings_updated_at(api, image_batch)
+                # Create Document objects with blob data
+                queries = [Document(blob=image_bytes) for image_bytes in image_bytes_list]
+                # Get vectors from images.
+                vectors_batch = await cas.get_vectors(queries)
+                vectors_batch = fix_vectors(vectors_batch)
+                logger.debug(f"{msg_prefix} Got {len(vectors_batch)} vectors for images.")
 
-            if return_vectors:
-                vectors.extend(vectors_batch)
+                # Upsert vectors to Qdrant.
+                await qdrant.upsert(project_id, vectors_batch, image_batch)
+                current_progress += len(image_batch)
 
-        logger.debug(f"{msg_prefix} All {total_progress} images have been vectorized.")
+                # Update progress
+                await update_processing_progress(project_id, current_progress, "processing")
 
-    if len(to_delete) > 0:
-        logger.debug(f"{msg_prefix} Vectors for images to be deleted: {len(to_delete)}.")
-        for image_batch in sly.batched(to_delete):
-            # Delete images from the Qdrant.
-            await qdrant.delete_collection_items(
-                collection_name=project_id, image_infos=image_batch
-            )
-            await set_image_embeddings_updated_at(api, image_batch, [None] * len(image_batch))
-            logger.debug(f"{msg_prefix} Deleted {len(image_batch)} images from Qdrant.")
-    logger.info(f"{msg_prefix} Embeddings Created: {len(to_create)}, Deleted: {len(to_delete)}.")
-    return to_create, vectors
+                logger.debug(
+                    f"{msg_prefix} Upserted {len(vectors_batch)} vectors to Qdrant. [{current_progress}/{total_progress}]",
+                )
+                await set_image_embeddings_updated_at(api, image_batch)
+
+                if return_vectors:
+                    vectors.extend(vectors_batch)
+
+            logger.debug(f"{msg_prefix} All {total_progress} images have been vectorized.")
+            # Mark as completed
+            await update_processing_progress(project_id, current_progress, "completed")
+
+        if len(to_delete) > 0:
+            logger.debug(f"{msg_prefix} Vectors for images to be deleted: {len(to_delete)}.")
+            for image_batch in sly.batched(to_delete):
+                # Delete images from the Qdrant.
+                await qdrant.delete_collection_items(
+                    collection_name=project_id, image_infos=image_batch
+                )
+                await set_image_embeddings_updated_at(api, image_batch, [None] * len(image_batch))
+                logger.debug(f"{msg_prefix} Deleted {len(image_batch)} images from Qdrant.")
+        logger.info(
+            f"{msg_prefix} Embeddings Created: {len(to_create)}, Deleted: {len(to_delete)}."
+        )
+
+        await asyncio_sleep(1)  # Brief delay to allow final status to be read
+        await clear_processing_progress(project_id)
+
+        return to_create, vectors
+    except Exception as e:
+        # Mark as error and log
+        await update_processing_progress(project_id, current_progress, "error")
+        logger.error(f"{msg_prefix} Error during image processing: {str(e)}")
+        raise
 
 
 @timeit
@@ -135,11 +166,7 @@ async def update_embeddings(
     if project_info.embeddings_in_progress is True and not skip_in_progress_check:
         logger.info(f"{msg_prefix} Embeddings update is already in progress. Skipping.")
         return
-    # if project_info.embeddings_updated_at is not None and parse_timestamp(
-    #     project_info.embeddings_updated_at
-    # ) > parse_timestamp(project_info.updated_at):
-    #     logger.info(f"{msg_prefix} Is not updated since last embeddings update. Skipping.")
-    #     return
+
     await set_embeddings_in_progress(api, project_id, True)
     await set_update_flag(api, project_id)
     g.current_task = project_id
@@ -172,8 +199,14 @@ async def update_embeddings(
             return
 
         await process_images(api, project_id, images_to_create, images_to_delete)
+
         if len(images_to_create) > 0 or len(images_to_delete) > 0:
             await set_project_embeddings_updated_at(api, project_id)
+    except asyncio.CancelledError:
+        logger.debug(
+            f"{msg_prefix} Embeddings update was cancelled, while processing images in update_embeddings function."
+        )
+        raise
     except Exception as e:
         logger.error(
             f"{msg_prefix} Error during embeddings update: {e}",
@@ -235,6 +268,7 @@ async def auto_update_embeddings(
     if not project_info.embeddings_enabled:
         logger.info(f"{msg_prefix} AI Search is not activated. Skipping.", extra=log_extra)
         return
+
     logger.info(f"{msg_prefix} Auto update embeddings started.", extra=log_extra)
     await update_embeddings(api, project_id, force=False, project_info=project_info)
     logger.info(f"{msg_prefix} Auto update embeddings finished.")
@@ -250,12 +284,26 @@ async def auto_update_all_embeddings():
         random.shuffle(project_infos)
         for project_info in project_infos:
             try:
-                await auto_update_embeddings(g.api, project_info.id)
+                # Create a task that can be cancelled
+                task = asyncio.create_task(
+                    auto_update_embeddings(g.api, project_info.id, project_info)
+                )
+                g.current_task_handle = task
+
+                await task
+            except asyncio.CancelledError:
+                logger.info(
+                    f"[Project: {project_info.id}] Task was cancelled, continuing to next project."
+                )
+                continue
             except Exception as e:
                 logger.error(
                     f"[Project: {project_info.id}] Error updating embeddings : {e}",
                     exc_info=True,
                 )
+            finally:
+                g.current_task_handle = None
+
         await AutoRestartInfo.clear_autorestart_params()
     except Exception as e:
         logger.error(f"Error in auto_update_all_embeddings: {e}", exc_info=True)
@@ -316,28 +364,19 @@ async def check_in_progress_projects():
                     ):
                         logger.info(
                             f"{msg_prefix} Embeddings creation task status: {cur_status}",
-                            extra={
-                                "is_running": is_running,
-                                "message": message
-                            }
+                            extra={"is_running": is_running, "message": message},
                         )
                         should_clear_in_progress = True
                     elif cur_status == ResponseStatus.RUNNING or is_running:
                         logger.debug(
                             f"{msg_prefix} Embeddings creation task status: {cur_status}",
-                            extra={
-                                "is_running": is_running,
-                                "message": message
-                            }
+                            extra={"is_running": is_running, "message": message},
                         )
                     else:
                         # Fallback: if status is unknown, log warning but clear the flag to avoid stuck projects
                         logger.warning(
                             f"{msg_prefix} Unknown task status: {cur_status}",
-                            extra={
-                                "is_running": is_running,
-                                "message": message
-                            }
+                            extra={"is_running": is_running, "message": message},
                         )
                         should_clear_in_progress = True
                 except Exception as e:
@@ -405,3 +444,94 @@ async def safe_check_autorestart():
                     )
     except Exception as e:
         sly.logger.error("Error in autorestart check", exc_info=True)
+
+
+@timeit
+async def stop_embeddings_update(api: sly.Api, project_id: int) -> dict:
+    """
+    Stop auto_update_embeddings task for a specific project only if it's currently active.
+
+    :param api: Supervisely API object
+    :param project_id: Project ID to stop the embeddings update for
+    :return: Dictionary with operation status and details
+    """
+    msg_prefix = f"[Project: {project_id}]"
+    result = {
+        "project_id": project_id,
+        "is_current_task": g.current_task == project_id,
+        "success": False,
+        "message": "",
+        "details": {},
+    }
+
+    try:
+        # Check if this project is currently being processed
+        if g.current_task != project_id:
+            result["success"] = True
+            message = f"{msg_prefix} Is not the current active task in the auto-updater."
+            result["message"] = message
+            logger.debug(message)
+            return result
+
+        logger.info(f"{msg_prefix} Stopping auto update...")
+
+        # Cancel the current task if it exists
+        if g.current_task_handle is not None:
+            g.current_task_handle.cancel()
+            result["details"]["cancel_task"] = "success"
+            logger.debug(f"{msg_prefix} Stopped auto update task successfully.")
+            result["message"] = "Stopped auto update task successfully"
+        else:
+            result["details"]["cancel_task"] = "failed"
+            result["details"]["cancel_task_reason"] = "No task handle found to cancel"
+            logger.warning(f"{msg_prefix} No task handle found to cancel.")
+            result["message"] = (
+                "No task handle found to cancel. Stopping auto update task is finished."
+            )
+        result["success"] = True
+
+        # Clear current task
+        g.current_task = None
+        result["details"]["clear_current_task"] = "success"
+        logger.debug(f"{msg_prefix} Cleared current task.")
+
+        # Clear embeddings in progress flag
+        try:
+            await set_embeddings_in_progress(api, project_id, False)
+            result["details"]["clear_in_progress_flag"] = "success"
+            logger.debug(f"{msg_prefix} Set embeddings in progress flag to False.")
+        except Exception as e:
+            result["details"]["clear_in_progress_flag"] = "failed"
+            logger.error(
+                f"{msg_prefix} Error setting embeddings in progress flag to False: {str(e)}"
+            )
+            result["success"] = False
+            result["message"] = (
+                "Failed to clear the in-progress status. Please contact technical support."
+            )
+
+        # Clear update flag
+        try:
+            await clear_update_flag(api, project_id)
+            result["details"]["clear_update_flag"] = "success"
+            logger.debug(f"{msg_prefix} Cleared embeddings update flag in custom data.")
+        except Exception as e:
+            result["details"]["clear_update_flag"] = "failed"
+            logger.error(f"{msg_prefix} Error clearing update flag in custom data: {str(e)}")
+
+        # Clear autorestart params
+        try:
+            await AutoRestartInfo.clear_autorestart_params()
+            result["details"]["clear_autorestart"] = "success"
+            logger.debug(f"{msg_prefix} Cleared autorestart parameters.")
+        except Exception as e:
+            result["details"]["clear_autorestart"] = "failed"
+            logger.warning(f"{msg_prefix} Error clearing autorestart params: {str(e)}")
+
+        logger.info(f"{msg_prefix} Stopping auto update task is finished.")
+
+    except Exception as e:
+        result["message"] = f"Error stopping auto update task: {str(e)}"
+        logger.error(f"{msg_prefix} Error stopping auto update task: {str(e)}", exc_info=True)
+
+    return result
