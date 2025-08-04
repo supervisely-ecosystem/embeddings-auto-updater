@@ -95,3 +95,4 @@ sly.logger.debug("Update frame in hours: %s", update_frame)
 
 current_task = None  # project_id which is currently processed creating embeddings
 current_task_handle = None  # asyncio.Task handle for current embeddings task
+current_task_progress = None  # current task progress, used to update task progress in Supervisely

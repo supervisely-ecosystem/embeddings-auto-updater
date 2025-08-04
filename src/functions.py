@@ -1,8 +1,10 @@
 import asyncio
 import random
+from asyncio import sleep as asyncio_sleep
 from typing import List, Optional, Tuple
 
 import supervisely as sly
+from docarray import Document
 from supervisely.sly_logger import logger
 
 import src.cas as cas
@@ -14,6 +16,7 @@ from src.utils import (
     CustomDataFields,
     ResponseFields,
     ResponseStatus,
+    clear_processing_progress,
     clear_update_flag,
     create_lite_image_infos,
     datetime,
@@ -27,11 +30,13 @@ from src.utils import (
     parse_timestamp,
     set_embeddings_in_progress,
     set_image_embeddings_updated_at,
+    set_processing_progress,
     set_project_embeddings_updated_at,
     set_update_flag,
     stop_running_in_progress_task,
     timeit,
     timezone,
+    update_processing_progress,
 )
 
 
@@ -69,55 +74,80 @@ async def process_images(
     if len(to_create) == 0 and len(to_delete) == 0:
         logger.debug(f"{msg_prefix} Nothing to update.")
         return to_create, vectors
+    try:
+        to_create = await create_lite_image_infos(
+            cas_size=g.IMAGE_SIZE_FOR_CLIP,
+            image_infos=to_create,
+        )
 
-    to_create = await create_lite_image_infos(
-        cas_size=g.IMAGE_SIZE_FOR_CLIP,
-        image_infos=to_create,
-    )
+        # if await qdrant.collection_exists(project_id):
+        # Get diff of image infos, check if they are already in the Qdrant collection
 
-    # if await qdrant.collection_exists(project_id):
-    # Get diff of image infos, check if they are already in the Qdrant collection
+        if check_collection_exists:
+            await qdrant.get_or_create_collection(project_id)
 
-    if check_collection_exists:
-        await qdrant.get_or_create_collection(project_id)
+        current_progress = 0
+        total_progress = len(to_create)
 
-    current_progress = 0
-    total_progress = len(to_create)
+        # Initialize progress tracking
+        if total_progress > 0:
+            await set_processing_progress(project_id, total_progress, 0, "processing")
 
-    if len(to_create) > 0:
-        logger.debug(f"{msg_prefix} Images to be vectorized: {total_progress}.")
-        for image_batch in sly.batched(to_create):
-            # Get vectors from images.
-            vectors_batch = await cas.get_vectors(
-                [image_info.cas_url for image_info in image_batch]
-            )
-            vectors_batch = fix_vectors(vectors_batch)
-            logger.debug(f"{msg_prefix} Got {len(vectors_batch)} vectors for images.")
+        if len(to_create) > 0:
+            logger.debug(f"{msg_prefix} Images to be vectorized: {total_progress}.")
+            for image_batch in sly.batched(to_create):
+                # Download images as bytes and create Document objects
+                image_ids = [image_info.id for image_info in image_batch]
+                image_bytes_list = await api.image.download_bytes_many_async(image_ids)
 
-            # Upsert vectors to Qdrant.
-            await qdrant.upsert(project_id, vectors_batch, image_batch)
-            current_progress += len(image_batch)
-            logger.debug(
-                f"{msg_prefix} Upserted {len(vectors_batch)} vectors to Qdrant. [{current_progress}/{total_progress}]",
-            )
-            await set_image_embeddings_updated_at(api, image_batch)
+                # Create Document objects with blob data
+                queries = [Document(blob=image_bytes) for image_bytes in image_bytes_list]
+                # Get vectors from images.
+                vectors_batch = await cas.get_vectors(queries)
+                vectors_batch = fix_vectors(vectors_batch)
+                logger.debug(f"{msg_prefix} Got {len(vectors_batch)} vectors for images.")
 
-            if return_vectors:
-                vectors.extend(vectors_batch)
+                # Upsert vectors to Qdrant.
+                await qdrant.upsert(project_id, vectors_batch, image_batch)
+                current_progress += len(image_batch)
 
-        logger.debug(f"{msg_prefix} All {total_progress} images have been vectorized.")
+                # Update progress
+                await update_processing_progress(project_id, current_progress, "processing")
 
-    if len(to_delete) > 0:
-        logger.debug(f"{msg_prefix} Vectors for images to be deleted: {len(to_delete)}.")
-        for image_batch in sly.batched(to_delete):
-            # Delete images from the Qdrant.
-            await qdrant.delete_collection_items(
-                collection_name=project_id, image_infos=image_batch
-            )
-            await set_image_embeddings_updated_at(api, image_batch, [None] * len(image_batch))
-            logger.debug(f"{msg_prefix} Deleted {len(image_batch)} images from Qdrant.")
-    logger.info(f"{msg_prefix} Embeddings Created: {len(to_create)}, Deleted: {len(to_delete)}.")
-    return to_create, vectors
+                logger.debug(
+                    f"{msg_prefix} Upserted {len(vectors_batch)} vectors to Qdrant. [{current_progress}/{total_progress}]",
+                )
+                await set_image_embeddings_updated_at(api, image_batch)
+
+                if return_vectors:
+                    vectors.extend(vectors_batch)
+
+            logger.debug(f"{msg_prefix} All {total_progress} images have been vectorized.")
+            # Mark as completed
+            await update_processing_progress(project_id, current_progress, "completed")
+
+        if len(to_delete) > 0:
+            logger.debug(f"{msg_prefix} Vectors for images to be deleted: {len(to_delete)}.")
+            for image_batch in sly.batched(to_delete):
+                # Delete images from the Qdrant.
+                await qdrant.delete_collection_items(
+                    collection_name=project_id, image_infos=image_batch
+                )
+                await set_image_embeddings_updated_at(api, image_batch, [None] * len(image_batch))
+                logger.debug(f"{msg_prefix} Deleted {len(image_batch)} images from Qdrant.")
+        logger.info(
+            f"{msg_prefix} Embeddings Created: {len(to_create)}, Deleted: {len(to_delete)}."
+        )
+
+        await asyncio_sleep(1)  # Brief delay to allow final status to be read
+        await clear_processing_progress(project_id)
+
+        return to_create, vectors
+    except Exception as e:
+        # Mark as error and log
+        await update_processing_progress(project_id, current_progress, "error")
+        logger.error(f"{msg_prefix} Error during image processing: {str(e)}")
+        raise
 
 
 @timeit

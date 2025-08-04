@@ -2,6 +2,7 @@ import datetime
 
 import supervisely as sly
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from fastapi import Request
 from fastapi.responses import JSONResponse
 
 import src.globals as g
@@ -13,7 +14,7 @@ from src.functions import (
     stop_embeddings_update,
 )
 from src.qdrant import client as qdrant_client
-from src.utils import check_generator_is_ready, run_safe
+from src.utils import ResponseFields, check_generator_is_ready, get_processing_progress, run_safe
 
 app = sly.Application()
 server = app.get_server()
@@ -166,3 +167,36 @@ async def stop_update_project(project_id: int):
             },
             status_code=500,
         )
+
+
+@server.post("/processing_progress")
+async def processing_progress_handler(request: Request):
+    """Get processing progress for a project or all projects."""
+    try:
+        state = request.state.state
+        project_id = state["project_id"]
+        if project_id is not None:
+            # Get progress for specific project
+            progress = await get_processing_progress(project_id)
+            if progress is None:
+                return JSONResponse(
+                    {
+                        ResponseFields.MESSAGE: f"No processing progress found for project {project_id}",
+                        ResponseFields.PROGRESS: None,
+                    },
+                    status_code=200,
+                )
+            return JSONResponse({ResponseFields.PROGRESS: progress}, status_code=200)
+        else:
+            return JSONResponse(
+                {
+                    ResponseFields.MESSAGE: "Project ID is not specified. Returning progress for all projects.",
+                    ResponseFields.PROGRESS: None,
+                },
+                status_code=200,
+            )
+
+    except Exception as e:
+        message = f"Error getting processing progress: {str(e)}"
+        sly.logger.error(message, exc_info=True)
+        return JSONResponse({ResponseFields.MESSAGE: message}, status_code=500)

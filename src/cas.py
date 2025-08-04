@@ -116,7 +116,8 @@ class SlyCasClient(Client):
 
 
 class CasClient:
-    async def get_vectors(self, queries: List[str]) -> List[List[float]]:
+
+    async def get_vectors(self, queries: Union[List[str], List[Document]]) -> List[List[float]]:
         raise NotImplementedError
 
 
@@ -126,7 +127,7 @@ class CasTaskClient(CasClient):
         self.api = api
         self.task_id = task_id
 
-    async def get_vectors(self, queries: List[str]) -> List[List[float]]:
+    async def get_vectors(self, queries: Union[List[str], List[Document]]) -> List[List[float]]:
         return await send_request(
             self.api,
             self.task_id,
@@ -171,17 +172,30 @@ class CasUrlClient(CasClient):
 
     @with_retries(retries=5, sleep_time=2)
     @timeit
-    async def get_vectors(self, queries: List[str]) -> List[np.ndarray]:
+    async def get_vectors(self, queries: Union[List[str], List[Document]]) -> List[np.ndarray]:
         """Use CLIP to get vectors from the list of queries.
-        List of queries is a list of URLs for images or text prompts.
+        List of queries can be:
+        - a list of URLs for images
+        - text prompts
+        - binary image data
+        - Document objects with blob data
 
-        :param queries: List of queries (URLs for images or text prompts).
-        :type queries: List[str]
+        :param queries: List of queries (URLs for images, text prompts, or Document objects).
+        :type queries: Union[List[str], List[Document]]
         :return: List of vectors.
         :rtype: List[np.ndarray]
         """
         vectors = await self.client.aencode(queries)
-        return vectors.tolist()
+
+        # Check if the result is a numpy array (when unboxed) or DocumentArray
+        if hasattr(vectors, "tolist"):
+            # It's already a numpy array (unboxed result)
+            return vectors.tolist()
+        elif hasattr(vectors, "embeddings"):
+            # It's a DocumentArray, get embeddings
+            return vectors.embeddings.tolist()
+        else:
+            raise ValueError(f"Unexpected result type from aencode: {type(vectors)}")
 
 
 def _init_client() -> Union[CasUrlClient, CasClient]:
@@ -286,7 +300,7 @@ async def _ensure_client_ready():
                 client = None
 
 
-async def get_vectors(queries: List[str]) -> List[List[float]]:
+async def get_vectors(queries: Union[List[str], List[Document]]) -> List[List[float]]:
     global client
 
     # Light check
