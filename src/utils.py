@@ -1084,7 +1084,7 @@ def update_processing_progress(project_id: int, current: int, status: str = "pro
     """
     import src.globals as g
 
-    if project_id in g.current_task_progress:
+    if g.current_task_progress.get("project_id") == project_id:
         g.current_task_progress["current"] = current
         g.current_task_progress["status"] = status
 
@@ -1098,7 +1098,12 @@ def get_processing_progress(project_id: int) -> Optional[Dict]:
     """
     import src.globals as g
 
-    return g.current_task_progress if project_id in g.current_task_progress else None
+    if (
+        isinstance(g.current_task_progress, dict)
+        and g.current_task_progress.get("project_id") == project_id
+    ):
+        return g.current_task_progress
+    return None
 
 
 @to_thread
@@ -1109,5 +1114,5 @@ def clear_processing_progress(project_id: int):
     """
     import src.globals as g
 
-    if project_id in g.current_task_progress:
+    if g.current_task_progress.get("project_id") == project_id:
         g.current_task_progress = None
