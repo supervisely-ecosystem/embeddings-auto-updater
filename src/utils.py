@@ -1,13 +1,15 @@
 import asyncio
+import urllib.parse
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial, wraps
 from time import perf_counter
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Literal, Optional, Union
 
+import aiohttp
 import httpx
 import supervisely as sly
-from supervisely._utils import batched, resize_image_url
+from supervisely._utils import batched
 from supervisely.api.module_api import ApiField
 from supervisely.api.task_api import TaskApi
 
@@ -379,10 +381,80 @@ def get_team_file_info(api: sly.Api, team_id: int, path: str):
     return api.file.get_info_by_path(team_id, path)
 
 
+def resize_image_url(
+    full_storage_url: str,
+    imgproxy_address: Optional[str] = None,
+    ext: Literal["jpeg", "png"] = "jpeg",
+    method: Literal["fit", "fill", "fill-down", "force", "auto"] = "auto",
+    width: int = 0,
+    height: int = 0,
+    quality: int = 70,
+) -> str:
+    """Returns a URL to a resized image with given parameters.
+    Default sizes are 0, which means that the image will not be resized,
+    just compressed if the extension is jpeg to the given quality.
+    Learn more about resize parameters `here <https://docs.imgproxy.net/usage/processing#resize>`_.
+
+    :param full_storage_url: Full Image storage URL, can be obtained from ImageInfo.
+    :type full_storage_url: str
+    :param ext: Image extension, jpeg or png.
+    :type ext: Literal["jpeg", "png"], optional
+    :param method: Resize type, fit, fill, fill-down, force, auto.
+    :type method: Literal["fit", "fill", "fill-down", "force", "auto"], optional
+    :param width: Width of the resized image.
+    :type width: int, optional
+    :param height: Height of the resized image.
+    :type height: int, optional
+    :param quality: Quality of the resized image.
+    :type quality: int, optional
+    :return: Full URL to a resized image.
+    :rtype: str
+
+    :Usage example:
+
+    .. code-block:: python
+
+        import supervisely as sly
+        from supervisely_utils import resize_image_url
+
+        api = sly.Api(server_address, token)
+
+        image_id = 376729
+        img_info = api.image.get_info_by_id(image_id)
+
+        img_resized_url = resize_image_url(
+            img_info.full_storage_url, ext="jpeg", method="fill", width=512, height=256)
+        print(img_resized_url)
+        # Output: https://app.supervisely.com/previews/q/ext:jpeg/resize:fill:512:256:0/q:70/plain/h5un6l2bnaz1vj8a9qgms4-public/images/original/2/X/Re/<image_name>.jpg
+    """
+    # original url example: https://app.supervisely.com/h5un6l2bnaz1vj8a9qgms4-public/images/original/2/X/Re/<image_name>.jpg
+    # resized url example:  https://app.supervisely.com/previews/q/ext:jpeg/resize:fill:300:0:0/q:70/plain/h5un6l2bnaz1vj8a9qgms4-public/images/original/2/X/Re/<image_name>.jpg
+    # to add: previews/q/ext:jpeg/resize:fill:300:0:0/q:70/plain/
+    try:
+        parsed_url = urllib.parse.urlparse(full_storage_url)
+        server_address = f"{parsed_url.scheme}://{parsed_url.netloc}"
+
+        resize_string = f"q/ext:{ext}/resize:{method}:{width}:{height}:0/q:{quality}/plain"
+        # Determine base address for imgproxy
+        if imgproxy_address:
+            # Remove trailing slash if present
+            imgproxy_address = imgproxy_address.rstrip("/")
+            base_address = imgproxy_address
+        else:
+            base_address = f"{server_address}/previews"
+
+        url = full_storage_url.replace(server_address, f"{base_address}/{resize_string}")
+        return url
+    except Exception as e:
+        sly.logger.debug(f"Failed to resize image with url: {full_storage_url}: {repr(e)}")
+        return full_storage_url
+
+
 @timeit
 async def create_lite_image_infos(
     cas_size: int,
     image_infos: List[sly.ImageInfo],
+    imgproxy_address: Optional[str] = None,
 ) -> List[ImageInfoLite]:
     """Returns lite version of image infos to cut off unnecessary data.
 
@@ -390,28 +462,38 @@ async def create_lite_image_infos(
     :type cas_size: int
     :param image_infos: List of image infos to get lite version from.
     :type image_infos: List[sly.ImageInfo]
+    :param imgproxy_address: Imgproxy address to use for resizing images, if None, will use the full storage URL.
+    :type imgproxy_address: Optional[str]
     :return: List of lite version of image infos.
     :rtype: List[ImageInfoLite]
     """
+    if imgproxy_address is not None:
+        sly.logger.debug(
+            "Imgproxy address is set to %s while creating lite image infos", imgproxy_address
+        )
     if not image_infos or len(image_infos) == 0:
         return []
     if isinstance(image_infos[0], ImageInfoLite):
         return image_infos
-    return [
-        ImageInfoLite(
-            id=image_info.id,
-            dataset_id=image_info.dataset_id,
-            full_url=image_info.full_storage_url,
-            cas_url=resize_image_url(
-                image_info.full_storage_url,
-                method="fit",
-                width=cas_size,
-                height=cas_size,
-            ),
-            updated_at=image_info.updated_at,
+    images_list = []
+    for image_info in image_infos:
+        cas_url = resize_image_url(
+            image_info.full_storage_url,
+            imgproxy_address=imgproxy_address,
+            method="fit",
+            width=cas_size,
+            height=cas_size,
         )
-        for image_info in image_infos
-    ]
+        images_list.append(
+            ImageInfoLite(
+                id=image_info.id,
+                dataset_id=image_info.dataset_id,
+                full_url=image_info.full_storage_url,
+                cas_url=cas_url,
+                updated_at=image_info.updated_at,
+            )
+        )
+    return images_list
 
 
 def parse_timestamp(timestamp: str, timestamp_format: str = "%Y-%m-%dT%H:%M:%S.%fZ") -> datetime:
@@ -1116,3 +1198,38 @@ def clear_processing_progress(project_id: int):
 
     if g.current_task_progress.get("project_id") == project_id:
         g.current_task_progress = None
+
+
+@timeit
+async def download_resized_images(image_urls: List[str]) -> List[bytes]:
+    """Download resized images in parallel with concurrency limit.
+
+    :param image_urls: List of image URLs to download
+    :type image_urls: List[str]
+    :return: List of image bytes in the same order as input URLs
+    :rtype: List[bytes]
+    """
+    import src.globals as g
+
+    concurrency = int(g.imgproxy_concurrency)
+
+    # Create semaphore to limit concurrent downloads
+    semaphore = asyncio.Semaphore(concurrency)
+
+    @with_retries()
+    async def download_single_image(session: aiohttp.ClientSession, url: str) -> bytes:
+        """Download a single image with semaphore protection."""
+        async with semaphore:
+            async with session.get(url) as response:
+                response.raise_for_status()
+                return await response.read()
+
+    # Create HTTP session
+    async with aiohttp.ClientSession() as session:
+        # Create tasks for all downloads, preserving order
+        tasks = [download_single_image(session, url) for url in image_urls]
+
+        # Wait for all downloads to complete
+        image_bytes_list = await asyncio.gather(*tasks)
+
+        return image_bytes_list
