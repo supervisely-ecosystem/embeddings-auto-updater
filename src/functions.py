@@ -20,6 +20,7 @@ from src.utils import (
     clear_update_flag,
     create_lite_image_infos,
     datetime,
+    download_resized_images,
     fix_vectors,
     get_all_projects,
     get_project_info,
@@ -78,6 +79,7 @@ async def process_images(
         to_create = await create_lite_image_infos(
             cas_size=g.IMAGE_SIZE_FOR_CLIP,
             image_infos=to_create,
+            imgproxy_address=g.imgproxy_address,
         )
 
         # if await qdrant.collection_exists(project_id):
@@ -97,8 +99,8 @@ async def process_images(
             logger.debug(f"{msg_prefix} Images to be vectorized: {total_progress}.")
             for image_batch in sly.batched(to_create):
                 # Download images as bytes and create Document objects
-                image_ids = [image_info.id for image_info in image_batch]
-                image_bytes_list = await api.image.download_bytes_many_async(image_ids)
+                image_urls = [image_info.cas_url for image_info in image_batch]
+                image_bytes_list = await download_resized_images(image_urls)
 
                 # Create Document objects with blob data
                 queries = [Document(blob=image_bytes) for image_bytes in image_bytes_list]

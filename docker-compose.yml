@@ -19,6 +19,8 @@ services:
       QDRANT_HOST: "${QDRANT_HOST}"
       CLIP_HOST: "${CLIP_HOST}" # CLIP application service, dont pass anything to search any available app instance automatically
       GENERATOR_HOST: "${GENERATOR_HOST}" # embeddings generator service, must be provided
+      IMGPROXY_ADDRESS: "${IMGPROXY_ADDRESS}" # Imgproxy service, e.g. http://imgproxy/
+      IMGPROXY_CONCURRENCY: "${IMGPROXY_CONCURRENCY}" # concurrency for Imgproxy service
       UPDATE_INTERVAL: ${UPDATE_INTERVAL} # minutes, default is 10 minutes
       UPDATE_FRAME: ${UPDATE_FRAME} # hours, default is 12 hours
     labels:
