@@ -276,7 +276,7 @@ async def _ensure_client_ready():
                 # IMPORTANT: Set client to None immediately when it's not working
                 client = None
             else:
-                sly.logger.info("CLIP client is ready for requests")
+                sly.logger.debug("CLIP client is ready for requests")
         except Exception as e:
             sly.logger.warning("CLIP client flow is not ready, invalidating client", exc_info=True)
             # IMPORTANT: Set client to None immediately when it's not working
@@ -296,7 +296,7 @@ async def _ensure_client_ready():
                         # IMPORTANT: Set client to None immediately when it's not working
                         client = None
                     else:
-                        sly.logger.info("CLIP client is ready for requests")
+                        sly.logger.debug("CLIP client is ready for requests")
 
             except Exception as init_e:
                 sly.logger.warning(
