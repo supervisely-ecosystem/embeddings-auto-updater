@@ -148,27 +148,28 @@ class CasUrlClient(CasClient):
         self.__wait_for_start()
 
     def __wait_for_start(self):
-        logger.info("Connecting to CLIP at %s...", self.url)
+        logger.info("Connecting to CLIP Service app")
         t = time.monotonic()
         delay = 1
         last_exception = None
         while time.monotonic() - t < self.STARTUP_TIMEOUT:
             try:
                 self.client.profile()
-                logger.info("Connected to CLIP at %s!", self.url)
+                logger.info("Connected to CLIP Service app at %s!", self.url)
                 return
             except Exception as e:
                 last_exception = e
                 logger.debug(
-                    "Failed to connect to CLIP at %s. Retrying after %d seconds...",
+                    "Failed to connect to CLIP Service app at %s. Retrying after %d seconds...",
                     self.url,
                     delay,
-                    exc_info=True,
                 )
                 time.sleep(delay)
                 if delay < 4:
                     delay *= 2
-        raise RuntimeError(f"Failed to connect to CLIP at {self.url}") from last_exception
+        raise RuntimeError(
+            f"Failed to connect to CLIP Service app at {self.url}"
+        ) from last_exception
 
     @with_retries(retries=5, sleep_time=2)
     @timeit
@@ -206,12 +207,14 @@ def _init_client() -> Union[CasUrlClient, CasClient]:
     if processed_clip_host is None or processed_clip_host == "":
         from src.utils import get_app_host
 
-        sly.logger.info("CLIP host not set in environment, fetching from app host...")
+        sly.logger.info("CLIP Service app host not set. Fetching...")
         processed_clip_host = get_app_host(g.api, CLIP_SLUG, processed_net_server_address)
-        sly.logger.info("Fetched CLIP host from app: %s", processed_clip_host)
+        sly.logger.debug("Fetched CLIP Service app host: %s", processed_clip_host)
 
     if not processed_clip_host:
-        raise ValueError("CLIP_HOST is not set and cannot be determined automatically")
+        raise ValueError(
+            "CLIP_HOST is not set in environment and cannot be determined automatically"
+        )
 
     try:
         # Try to parse as task ID
@@ -221,24 +224,30 @@ def _init_client() -> Union[CasUrlClient, CasClient]:
         if processed_clip_host[:4] not in ["http", "ws:/", "grpc"]:
             processed_clip_host = "grpc://" + processed_clip_host
 
-        sly.logger.info("Using CLIP host as URL: %s", processed_clip_host)
+        sly.logger.debug("Using CLIP Service app host as URL: %s", processed_clip_host)
         return CasUrlClient(processed_clip_host)
 
     # If we reach here, processed_clip_host is a task ID
-    sly.logger.debug("CLIP host appears to be a task ID: %s, fetching task info...", task_id)
+    sly.logger.debug(
+        "CLIP Service app host appears to be a task ID: %s, fetching task info...", task_id
+    )
     task_info = g.api.task.get_info_by_id(task_id)
 
     try:
         processed_clip_host = (
             g.api.server_address + task_info["settings"]["message"]["appInfo"]["baseUrl"]
         )
-        sly.logger.debug("Resolved CLIP URL from task settings: %s", processed_clip_host)
+        sly.logger.debug(
+            "Resolved CLIP Service app URL from task settings: %s", processed_clip_host
+        )
     except Exception as e:
-        sly.logger.warning("Cannot get CLIP URL from task settings", exc_info=True)
-        raise RuntimeError("Cannot connect to CLIP Service")
+        sly.logger.warning("Cannot get CLIP Service app URL from task settings")
+        raise RuntimeError("Cannot connect to CLIP Service app") from e
 
     # Use the resolved URL to create CasUrlClient instead of CasTaskClient
-    sly.logger.info("Resolved CLIP host from Task ID and using it as URL: %s", processed_clip_host)
+    sly.logger.info(
+        "Resolved CLIP Service app host from Task ID and using it as URL: %s", processed_clip_host
+    )
     return CasUrlClient(processed_clip_host)
 
 
@@ -249,12 +258,11 @@ async def _ensure_client_ready():
     # Check if client is None or not properly initialized
     if client is None:
         try:
-            sly.logger.info("CLIP client is None, attempting to initialize...")
+            sly.logger.info("CLIP client is not initialized, initializing...")
             client = _init_client()
-            sly.logger.info("CLIP client successfully initialized")
         except Exception as e:
-            error_msg = f"Failed to initialize CLIP client: {str(e)}"
-            sly.logger.error(error_msg, exc_info=True)
+            error_msg = f"Failed to initialize CLIP client. Check if CLIP Service app is running on your instance."
+            sly.logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
     # ALWAYS check for CasUrlClient readiness, even if client exists
@@ -268,18 +276,17 @@ async def _ensure_client_ready():
                 # IMPORTANT: Set client to None immediately when it's not working
                 client = None
             else:
-                sly.logger.debug("CLIP client is ready for requests")
+                sly.logger.info("CLIP client is ready for requests")
         except Exception as e:
-            sly.logger.warning("CLIP client flow is not ready, invalidating client: %s", str(e))
+            sly.logger.warning("CLIP client flow is not ready, invalidating client", exc_info=True)
             # IMPORTANT: Set client to None immediately when it's not working
             client = None
             sly.logger.debug("CLIP client invalidated due to flow not ready")
 
             # Try to reinitialize, but don't fail if it doesn't work
             try:
-                sly.logger.info("Attempting to reinitialize CLIP client...")
+                sly.logger.info("Reinitializing CLIP client...")
                 client = _init_client()
-                sly.logger.info("CLIP client successfully reinitialized")
 
                 # Verify the new client is ready
                 if isinstance(client, CasUrlClient):
@@ -289,12 +296,12 @@ async def _ensure_client_ready():
                         # IMPORTANT: Set client to None immediately when it's not working
                         client = None
                     else:
-                        sly.logger.debug("CLIP client is ready for requests")
+                        sly.logger.info("CLIP client is ready for requests")
 
             except Exception as init_e:
                 sly.logger.warning(
-                    "Failed to reinitialize CLIP client, will retry on next request: %s",
-                    str(init_e),
+                    "Failed to reinitialize CLIP client. Check if CLIP Service app is running on your instance. Will retry on next request",
+                    exc_info=True,
                 )
                 # Don't raise error here - client is already None, next call will try again
                 client = None
@@ -314,9 +321,7 @@ async def get_vectors(queries: Union[List[str], List[Document]]) -> List[List[fl
         return await client.get_vectors(queries)
     except Exception as e:
         # Try to reinitialize the client
-        sly.logger.warning(
-            "Error during get_vectors, attempting to reinitialize client: %s", str(e)
-        )
+        sly.logger.warning("Error during get_vectors, attempting to reinitialize CLIP client")
         try:
             await _ensure_client_ready()
             if client is not None:
@@ -325,8 +330,8 @@ async def get_vectors(queries: Union[List[str], List[Document]]) -> List[List[fl
             sly.logger.error("Failed to reinitialize client: %s", str(reinit_e))
 
         # If reinitialization fails - raise the original error
-        error_msg = f"Failed to get vectors from CLIP service: {str(e)}"
-        sly.logger.error(error_msg, exc_info=True)
+        error_msg = f"Failed to get vectors from CLIP service."
+        sly.logger.error(error_msg)
         raise RuntimeError(error_msg) from e
 
 
@@ -337,7 +342,7 @@ async def is_flow_ready():
     try:
         await _ensure_client_ready()
     except Exception as e:
-        sly.logger.warning("Failed to ensure CLIP client ready in health check: %s", str(e))
+        sly.logger.warning("Failed to ensure CLIP client ready in health check", exc_info=True)
         return False
 
     return client is not None
