@@ -63,7 +63,6 @@ update_interval = (
 update_frame = os.getenv("UPDATE_FRAME")
 update_frame = (
     float(update_frame) if update_frame and update_frame != "" else 12
-    
 )  # default value in hours
 imgproxy_address = os.getenv("IMGPROXY_ADDRESS", None)
 imgproxy_concurrency = os.getenv("IMGPROXY_CONCURRENCY", 2)
@@ -76,11 +75,12 @@ if not generator_host:
     raise ValueError("GENERATOR_HOST is not set in the environment variables")
 
 sly.logger.info("Qdrant host: %s", qdrant_host)
+sly.logger.info("CLIP Service app host from environment: %s", clip_host)
 sly.logger.info("Supervisely network server address: %s", net_server_address)
 sly.logger.info("Embeddings Generator host: %s", generator_host)
 if clip_host is not None and clip_host != "" and net_server_address is not None:
     sly.logger.info(
-        "CLIP host is set and will be used instead of Supervisely network server address"
+        "CLIP Service app host is set and will be used instead of Supervisely network server address"
     )
 sly.logger.info("Imgproxy address: %s", imgproxy_address)
 sly.logger.info("Imgproxy concurrency: %s", imgproxy_concurrency)
