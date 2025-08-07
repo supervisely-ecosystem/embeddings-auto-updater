@@ -1220,9 +1220,13 @@ async def download_resized_images(image_urls: List[str]) -> List[bytes]:
     async def download_single_image(session: aiohttp.ClientSession, url: str) -> bytes:
         """Download a single image with semaphore protection."""
         async with semaphore:
-            async with session.get(url) as response:
-                response.raise_for_status()
-                return await response.read()
+            try:
+                async with session.get(url) as response:
+                    response.raise_for_status()
+                    return await response.read()
+            except Exception as e:
+                sly.logger.error(f"Failed to download image from URL: {url}. Error: {str(e)}")
+                raise
 
     # Create HTTP session
     async with aiohttp.ClientSession() as session:
